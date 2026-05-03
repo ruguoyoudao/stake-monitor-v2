@@ -495,7 +495,7 @@ class StakeScraper:
         return ''
 
     def _extract_modal_info(self) -> dict:
-        """从当前 bet detail 弹窗中提取赛事名和玩家名（用于核对）"""
+        """从当前 bet detail 弹窗中提取赛事/玩家/赔率/投注额（用于核对）"""
         return self.page.evaluate("""() => {
             const modals = document.querySelectorAll(
                 '[class*="fixed"][class*="justify-center"]'
@@ -504,19 +504,27 @@ class StakeScraper:
                 const text = (modal.innerText || '').trim();
                 if (!text.includes('ID')) continue;
                 const lines = text.split('\\n').map(l => l.trim()).filter(Boolean);
-                let player = '', event = '';
+                let player = '', event = '', odds = '', amount = '';
                 for (let i = 0; i < lines.length; i++) {
                     if (lines[i].includes('放置在') || lines[i].includes('Placed by')) {
-                        player = (lines[i + 1] || '').substring(0, 30);
+                        player = (lines[i + 1] || '');
                     }
                     // 时间行（如 "下午6:13 2026/5/2"）的下一行是赛事名
                     if (/\\d{1,2}[:.]\\d{2}\\s+\\d{4}/.test(lines[i]) && i + 1 < lines.length) {
-                        event = (lines[i + 1] || '').substring(0, 50);
+                        event = (lines[i + 1] || '');
+                    }
+                    // 赔率行（中文 "赔率" 的下一行）
+                    if (lines[i] === '赔率' && i + 1 < lines.length) {
+                        odds = lines[i + 1];
+                    }
+                    // 投注额（中文 "投注额" 的下一行）
+                    if (lines[i] === '投注额' && i + 1 < lines.length) {
+                        amount = lines[i + 1];
                     }
                 }
-                return {event: event, player: player};
+                return {event: event, player: player, odds: odds, amount: amount};
             }
-            return {event: '', player: ''};
+            return {event: '', player: '', odds: '', amount: ''};
         }""")
 
     def _open_bet_detail(self, bet: dict) -> str:
@@ -571,19 +579,27 @@ class StakeScraper:
                 break
             time.sleep(0.5)
 
-        # 核对弹窗内容是否与当前投注匹配
+        # 核对弹窗内容是否与当前投注匹配（赛事、玩家、赔率、金额 4 项全部匹配）
         expected_event = bet.get('event', '')[:20]
         expected_player = bet.get('player', '')
+        expected_odds = bet.get('odds', '')[:6]
+        expected_amount = bet.get('amount', '')[:10]
         for verify_attempt in range(2):
             modal_info = self._extract_modal_info()
             event_ok = expected_event and expected_event in modal_info.get('event', '')
             player_ok = expected_player and expected_player in modal_info.get('player', '')
-            if event_ok or player_ok:
+            odds_ok = expected_odds and expected_odds in modal_info.get('odds', '')
+            amount_ok = expected_amount and expected_amount in modal_info.get('amount', '')
+            all_ok = event_ok and player_ok and odds_ok and amount_ok
+            if all_ok:
                 break
             if verify_attempt == 0:
                 logger.info(
-                    f"弹窗不匹配, 重试: expect='{expected_event}|{expected_player}' "
-                    f"got='{modal_info.get('event','')[:20]}|{modal_info.get('player','')}'"
+                    f"弹窗不匹配, 重试: expect event='{expected_event}' player='{expected_player}' "
+                    f"odds='{expected_odds}' amount='{expected_amount}' "
+                    f"got event='{modal_info.get('event','')[:20]}' player='{modal_info.get('player','')}' "
+                    f"odds='{modal_info.get('odds','')}' amount='{modal_info.get('amount','')}' "
+                    f"match={event_ok}/{player_ok}/{odds_ok}/{amount_ok}"
                 )
                 self._dismiss_detail_panel()
                 time.sleep(0.5)
@@ -609,8 +625,11 @@ class StakeScraper:
                     return '';
                 }""")
                 logger.warning(
-                    f"弹窗不匹配, 跳过: expect='{expected_event}|{expected_player}' "
-                    f"got='{modal_info.get('event','')[:20]}|{modal_info.get('player','')}' "
+                    f"弹窗不匹配, 跳过: expect event='{expected_event}' player='{expected_player}' "
+                    f"odds='{expected_odds}' amount='{expected_amount}' "
+                    f"got event='{modal_info.get('event','')[:20]}' player='{modal_info.get('player','')}' "
+                    f"odds='{modal_info.get('odds','')}' amount='{modal_info.get('amount','')}' "
+                    f"match={event_ok}/{player_ok}/{odds_ok}/{amount_ok} "
                     f"rawCols={bet.get('rawCols', [])} modalText={modal_full}"
                 )
                 self._dismiss_detail_panel()
