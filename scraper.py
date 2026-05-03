@@ -494,6 +494,31 @@ class StakeScraper:
 
         return ''
 
+    def _extract_modal_info(self) -> dict:
+        """从当前 bet detail 弹窗中提取赛事名和玩家名（用于核对）"""
+        return self.page.evaluate("""() => {
+            const modals = document.querySelectorAll(
+                '[class*="fixed"][class*="justify-center"]'
+            );
+            for (const modal of modals) {
+                const text = (modal.innerText || '').trim();
+                if (!text.includes('ID')) continue;
+                const lines = text.split('\\n').map(l => l.trim()).filter(Boolean);
+                let player = '', event = '';
+                for (let i = 0; i < lines.length; i++) {
+                    if (lines[i].includes('放置在') || lines[i].includes('Placed by')) {
+                        player = (lines[i + 1] || '').substring(0, 30);
+                    }
+                    // 时间行（如 "下午6:13 2026/5/2"）的下一行是赛事名
+                    if (/\\d{1,2}[:.]\\d{2}\\s+\\d{4}/.test(lines[i]) && i + 1 < lines.length) {
+                        event = (lines[i + 1] || '').substring(0, 50);
+                    }
+                }
+                return {event: event, player: player};
+            }
+            return {event: '', player: ''};
+        }""")
+
     def _open_bet_detail(self, bet: dict) -> str:
         """点击风云榜某行的赛事链接，打开详情面板并提取分享链接"""
         row_info = self._find_bet_row(bet)
@@ -545,6 +570,39 @@ class StakeScraper:
             if has_modal:
                 break
             time.sleep(0.5)
+
+        # 核对弹窗内容是否与当前投注匹配
+        expected_event = bet.get('event', '')[:20]
+        expected_player = bet.get('player', '')
+        for verify_attempt in range(2):
+            modal_info = self._extract_modal_info()
+            event_ok = expected_event and expected_event in modal_info.get('event', '')
+            player_ok = expected_player and expected_player in modal_info.get('player', '')
+            if event_ok or player_ok:
+                break
+            if verify_attempt == 0:
+                logger.info(
+                    f"弹窗不匹配, 重试: expect='{expected_event}|{expected_player}' "
+                    f"got='{modal_info.get('event','')[:20]}|{modal_info.get('player','')}'"
+                )
+                self._dismiss_detail_panel()
+                time.sleep(0.5)
+                # 重新点击
+                try:
+                    btn = self.page.locator("tr").nth(row_idx) \
+                        .locator("td").first.locator("button").first
+                    btn.scroll_into_view_if_needed()
+                    btn.click(timeout=5000)
+                except Exception:
+                    pass
+                time.sleep(2)
+            else:
+                logger.warning(
+                    f"弹窗仍不匹配, 跳过: expect='{expected_event}|{expected_player}' "
+                    f"got='{modal_info.get('event','')[:20]}|{modal_info.get('player','')}'"
+                )
+                self._dismiss_detail_panel()
+                return ''
 
         share_link = self._get_share_link_from_detail()
         if share_link:
