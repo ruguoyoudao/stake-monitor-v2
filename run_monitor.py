@@ -38,6 +38,10 @@ logger.info(f"大额通知阈值: >= CNY{ALERT_THRESHOLD_CNY:,}")
 logger.info("=" * 60)
 
 seen_bets = set()
+zero_bets_streak = 0          # 连续 0 投注次数
+stale_streak = 0              # 连续无新投注次数
+scrape_err_streak = 0         # 连续数据提取失败次数
+ANOMALY_THRESHOLD = 10        # 连续 N 次异常触发通知
 
 try:
     poll_count = 0
@@ -121,6 +125,46 @@ try:
 
                 notifier.send(title, formatted)
                 logger.info(f">>> 已发送 {len(large_bets)} 条大额通知")
+
+        # 数据提取异常检测（data 完全为空 = scrape 失败）
+        if len(data) == 0:
+            scrape_err_streak += 1
+            zero_bets_streak = 0
+            stale_streak = 0
+            if scrape_err_streak == ANOMALY_THRESHOLD:
+                notifier.send(
+                    f"数据提取异常 - {timestamp}",
+                    [{"event": f"连续 {scrape_err_streak} 轮数据提取失败，页面可能关闭",
+                      "player": "—", "time": timestamp, "odds": "—",
+                      "amount": "—", "cny": "—"}],
+                )
+                logger.warning(f"!!! 数据提取异常: 连续 {scrape_err_streak} 轮提取失败")
+        elif len(bets) == 0:
+            zero_bets_streak += 1
+            stale_streak = 0
+            if zero_bets_streak == ANOMALY_THRESHOLD:
+                notifier.send(
+                    f"数据异常警告 - {timestamp}",
+                    [{"event": f"连续 {zero_bets_streak} 轮无投注数据",
+                      "player": "—", "time": timestamp, "odds": "—",
+                      "amount": "—", "cny": "—"}],
+                )
+                logger.warning(f"!!! 数据异常: 连续 {zero_bets_streak} 轮无投注数据")
+        elif len(new_bets) == 0:
+            zero_bets_streak = 0
+            stale_streak += 1
+            if stale_streak == ANOMALY_THRESHOLD:
+                notifier.send(
+                    f"数据异常警告 - {timestamp}",
+                    [{"event": f"连续 {stale_streak} 轮无新投注，feed 可能停滞",
+                      "player": "—", "time": timestamp, "odds": "—",
+                      "amount": "—", "cny": "—"}],
+                )
+                logger.warning(f"!!! 数据异常: 连续 {stale_streak} 轮无新投注")
+        else:
+            zero_bets_streak = 0
+            stale_streak = 0
+            scrape_err_streak = 0
 
         time.sleep(config["scraper"]["poll_interval"])
 

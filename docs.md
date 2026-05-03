@@ -44,7 +44,11 @@ while True:
     5. 大额投注:
        a. extract_details_for_bets() → 点击弹窗 → 剪贴板拦截 → 分享链接
        b. notifier.send()            → 企业微信推送
-    6. sleep(poll_interval)
+    6. 异常检测（连续 10 次触发通知）:
+       a. data == []       → 数据提取异常（页面关闭/崩溃）
+       b. bets == 0        → 数据异常（投注数据丢失）
+       c. new_bets == 0    → 数据异常（feed 停滞）
+    7. sleep(poll_interval)
 ```
 
 ### 过滤规则
@@ -54,6 +58,16 @@ while True:
 | `event` 含"复式" | `skip(复式)` |
 | `to_cny()` 返回 0（非 USDT/USDC/BTC/ETH） | `skip(unknown currency)` |
 | `amount_cny < ALERT_THRESHOLD_CNY` | 不通知（仅日志记录） |
+
+### 异常检测
+
+| 条件 | 连续次数 | 通知标题 | 典型原因 |
+|------|---------|---------|---------|
+| `len(data) == 0` | ≥ 10 | 数据提取异常 | 浏览器页面关闭/崩溃 |
+| `len(bets) == 0` | ≥ 10 | 数据异常警告 | 投注数据未加载 |
+| `len(new_bets) == 0` | ≥ 10 | 数据异常警告 | feed 停滞无新数据 |
+
+全局变量 `ANOMALY_THRESHOLD = 10`，恢复正常后计数器自动归零。
 
 ---
 

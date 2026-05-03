@@ -83,7 +83,11 @@ class Notifier:
 
     def _format_one_bet(self, item: dict) -> list[str]:
         """格式化单条投注"""
-        odds_val = float(item.get('odds', '0') or 0)
+        odds_raw = item.get('odds', '')
+        try:
+            odds_val = float(odds_raw or '0')
+        except ValueError:
+            odds_val = 0
         if odds_val < 1.2:
             odds_color = "comment"
         elif odds_val < 1.4:
@@ -95,7 +99,7 @@ class Notifier:
             f"> **赛事**: {item.get('event', '')}",
             f"> **玩家**: {item.get('player', '')}",
             f"> **时间**: {item.get('time', '')}",
-            f'> **赔率**: <font color=\"{odds_color}\">{item.get("odds", "")}x</font>',
+            f'> **赔率**: <font color=\"{odds_color}\">{item.get("odds", "")}{"x" if odds_val > 0 else ""}</font>',
             f"> **金额**: <font color=\"warning\">{item.get('amount', '')}</font>",
             f"> **CNY**: <font color=\"warning\">{item.get('cny', '')}</font>",
         ]
