@@ -344,7 +344,7 @@ class StakeScraper:
             return None
 
     def _dismiss_detail_panel(self):
-        """关闭详情面板（优先点关闭按钮，fallback 按 Escape）"""
+        """关闭详情面板，并等待确认已消失"""
         try:
             self.page.evaluate("""() => {
                 const selectors = [
@@ -367,14 +367,28 @@ class StakeScraper:
                 }
                 return false;
             }""")
-            time.sleep(0.5)
+            time.sleep(0.3)
         except Exception:
             pass
         try:
             self.page.keyboard.press("Escape")
-            time.sleep(0.5)
+            time.sleep(0.3)
         except Exception:
             pass
+        # 等待弹窗实际消失
+        for _ in range(10):
+            exists = self.page.evaluate("""() => {
+                const modals = document.querySelectorAll(
+                    '[class*="fixed"][class*="justify-center"]'
+                );
+                for (const m of modals) {
+                    if ((m.innerText || '').includes('ID')) return true;
+                }
+                return false;
+            }""")
+            if not exists:
+                break
+            time.sleep(0.3)
 
     def _get_share_link_from_detail(self, timeout: float = 10) -> str:
         """从详情弹窗中通过复制按钮获取分享链接（拦截 clipboard）"""
@@ -517,6 +531,21 @@ class StakeScraper:
             logger.info(f"点击赛事链接失败: {e}")
             return ''
 
+        # 等待新弹窗出现（含 Bet ID）
+        for _ in range(15):
+            has_modal = self.page.evaluate("""() => {
+                const modals = document.querySelectorAll(
+                    '[class*="fixed"][class*="justify-center"]'
+                );
+                for (const m of modals) {
+                    if ((m.innerText || '').includes('ID')) return true;
+                }
+                return false;
+            }""")
+            if has_modal:
+                break
+            time.sleep(0.5)
+
         share_link = self._get_share_link_from_detail()
         if share_link:
             logger.info(f"获取分享链接: {share_link}")
@@ -527,6 +556,8 @@ class StakeScraper:
         """对一批投注获取分享链接（失败重试1次）"""
         results = []
         for bet in bets:
+            # 先清除可能残留的弹窗
+            self._dismiss_detail_panel()
             link = self._open_bet_detail(bet)
             if not link:
                 logger.info(
@@ -534,6 +565,7 @@ class StakeScraper:
                     f"{bet.get('event','')[:30]}"
                 )
                 time.sleep(1)
+                self._dismiss_detail_panel()
                 link = self._open_bet_detail(bet)
             merged = {**bet, "share_link": link} if link else bet
             results.append(merged)
