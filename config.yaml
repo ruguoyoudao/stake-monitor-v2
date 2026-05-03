@@ -1,0 +1,59 @@
+# ==========================================
+# Stake.com 实时监控 - 配置文件
+# ==========================================
+
+# 目标监控页面
+target:
+  url: "https://stake.com/sports/live"
+  # 可监控的页面:
+  #   https://stake.com/sports/live          - 体育直播
+  #   https://stake.com/sports/upcoming      - 即将开始
+  #   https://stake.com/casino/games/crash   - Crash 游戏
+  #   https://stake.com/casino/games/roulette - 轮盘
+
+# 浏览器设置
+browser:
+  headless: false               # false = 可见浏览器（调试用），true = 无头模式
+  channel: "chrome"             # chrome / msedge
+  slow_mo: 100                  # 操作间隔毫秒（防检测）
+  viewport_width: 1920
+  viewport_height: 1080
+  timeout: 60000                # 页面加载超时(ms)
+  locale: "en-US"               # 浏览器语言
+  timezone_id: "UTC"
+  proxy: ""  # 代理地址（留空则使用系统代理或不使用代理）
+  nav_retries: 3                # 页面导航重试次数
+  user_data_dir: "./browser_profile"  # 持久化用户目录，留空=不复用（CDP模式忽略此项）
+  cdp_port: 9222                # CDP远程调试端口（连接已有浏览器；设为0=使用内置浏览器）
+
+# 采集设置
+scraper:
+  poll_interval: 30             # 数据轮询间隔(秒) - 风云榜数据更新较慢
+  wait_for_selector: ".sports-live-events"  # 等待此元素出现才采集
+  ready_timeout: 120            # 等待页面就绪超时(秒)，含 Cloudflare 验证
+
+# ==========================================
+# 通知配置
+# ==========================================
+notifications:
+  enabled: true
+
+  # 企业微信机器人 Webhook
+  wecom:
+    enabled: true
+    webhook_url: "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=b2832668-cf86-442c-92bf-f0dbc6adae51"
+
+  # 钉钉机器人 Webhook
+  dingtalk:
+    enabled: false
+    webhook_url: "https://oapi.dingtalk.com/robot/send?access_token=YOUR_TOKEN_HERE"
+
+  # 触发条件
+  rules:
+    pass_all: false             # 关闭，仅通知大额
+    cny_threshold: 500000        # 投注额 >= ¥500,000 时发送通知
+
+# 日志设置
+logging:
+  level: "INFO"                 # DEBUG / INFO / WARNING / ERROR
+  file: "monitor.log"           # 日志文件路径
