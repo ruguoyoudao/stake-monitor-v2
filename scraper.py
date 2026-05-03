@@ -597,9 +597,21 @@ class StakeScraper:
                     pass
                 time.sleep(2)
             else:
+                # 记录完整弹窗内容便于排查
+                modal_full = self.page.evaluate("""() => {
+                    const modals = document.querySelectorAll(
+                        '[class*="fixed"][class*="justify-center"]'
+                    );
+                    for (const m of modals) {
+                        const t = (m.innerText || '').trim();
+                        if (t.includes('ID')) return t.substring(0, 500);
+                    }
+                    return '';
+                }""")
                 logger.warning(
-                    f"弹窗仍不匹配, 跳过: expect='{expected_event}|{expected_player}' "
-                    f"got='{modal_info.get('event','')[:20]}|{modal_info.get('player','')}'"
+                    f"弹窗不匹配, 跳过: expect='{expected_event}|{expected_player}' "
+                    f"got='{modal_info.get('event','')[:20]}|{modal_info.get('player','')}' "
+                    f"rawCols={bet.get('rawCols', [])} modalText={modal_full}"
                 )
                 self._dismiss_detail_panel()
                 return ''
@@ -626,6 +638,11 @@ class StakeScraper:
                 self._dismiss_detail_panel()
                 link = self._open_bet_detail(bet)
             merged = {**bet, "share_link": link} if link else bet
+            if not link:
+                logger.info(
+                    f"未获取到分享链接: event={bet.get('event','')[:40]} "
+                    f"player={bet.get('player','')} amount={bet.get('amount','')}"
+                )
             results.append(merged)
         return results
 
