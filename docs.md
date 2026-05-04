@@ -147,19 +147,23 @@ while True:
 确保风云榜 tab 处于激活状态。滚动到目标按钮，用 Playwright `page.click()` 点击 `button:has-text('风云榜')`。
 
 #### `_find_bet_row(bet: dict) → dict | None`
-在 DOM 中根据 `event + player` 文本定位匹配的 `<tr>` 行。返回行索引和触发类型（`button`/`anchor`/`td`）。
-
-**匹配逻辑**：遍历所有 `<tr>`，用 `.filter(Boolean)` 对齐列索引后，比对 `texts[0]`（赛事）和 `texts[1]`（玩家）。
+在 DOM 中根据 `rawCols` 五字段（event/player/time/odds/amount）精确匹配 `<tr>` 行。文本提取方式（`innerText || textContent`）与 `_extract_bet_feed` 对齐，确保大小写一致。若无 rawCols 则回退到 event+player 包含匹配。返回行索引和触发类型（`button`/`anchor`/`td`）。
 
 #### `_open_bet_detail(bet: dict) → str`
-点击风云榜行的赛事名按钮，打开投注详情弹窗，提取分享链接后关闭弹窗。
+点击风云榜行的赛事名按钮，打开投注详情弹窗，核对弹窗内容后提取分享链接。
 
 **流程**：
-1. `_find_bet_row()` 定位行
+1. `_find_bet_row()` 5 字段精确定位行
 2. Playwright `locator().click()` 点击第 1 列按钮
-3. `_get_share_link_from_detail()` 提取链接
-4. `_dismiss_detail_panel()` 关闭弹窗
-5. 失败重试 1 次
+3. `_extract_modal_info()` 提取弹窗赔率/金额
+4. odds + amount 双字段匹配 → 继续；不匹配 → 重试 1 次
+5. `_get_share_link_from_detail()` 提取链接
+5. `_get_share_link_from_detail()` 提取链接
+6. `_dismiss_detail_panel()` 关闭弹窗
+7. 失败重试 1 次
+
+#### `_extract_modal_info() → dict`
+从投注详情弹窗中提取赔率和投注额（用于 odds+amount 双字段核对）。解析弹窗文本中"赔率/投注额"中文标识的下一行。
 
 #### `_get_share_link_from_detail(timeout=10) → str`
 从投注详情弹窗中获取分享链接。

@@ -301,45 +301,65 @@ class StakeScraper:
                 pass
 
     def _find_bet_row(self, bet: dict) -> dict | None:
-        """在风云榜表格中定位匹配的 tr 行"""
-        event = bet.get("event", "")
-        player = bet.get("player", "")
+        """在风云榜表格中定位匹配的 tr 行（event/player/time/odds/amount 五字段精确匹配）"""
+        raw = bet.get("rawCols", [])
+        if len(raw) < 5:
+            # 回退：只用 event + player
+            event = bet.get("event", "")
+            player = bet.get("player", "")
+            search_fields = [event, player, "", "", ""]
+            use_exact = False
+        else:
+            search_fields = raw[:5]
+            use_exact = True
         try:
-            return self.page.evaluate("""([event, player]) => {
+            result = self.page.evaluate("""([cols, exact]) => {
                 const rows = document.querySelectorAll('tr');
                 for (let i = 0; i < rows.length; i++) {
                     const tds = rows[i].querySelectorAll('td');
-                    if (tds.length < 4) continue;
-                    const texts = Array.from(tds).map(td => (td.innerText || '').trim()).filter(t => t.length > 0);
-                    if (texts.length < 2) continue;
-                    if (texts[0].includes(event) && texts[1].includes(player)) {
-                        const firstTd = tds[0];
-                        const btn = firstTd.querySelector('button');
-                        const anchor = firstTd.querySelector('a');
-                        if (btn) {
-                            return {
-                                rowIndex: i,
-                                trigger: 'button',
-                                btnSelector: btn.className ? '.' + btn.className.split(' ')[0] : '',
-                                btnText: (btn.textContent || '').trim().substring(0, 40)
-                            };
+                    if (tds.length < 5) continue;
+                    const texts = Array.from(tds).map(td => (td.innerText || td.textContent || '').trim()).filter(t => t.length > 0);
+                    if (texts.length < 5) continue;
+                    if (exact) {
+                        // 5 字段精确匹配（与 _extract_bet_feed 同一文本提取方式）
+                        if (texts[0] === cols[0] && texts[1] === cols[1] &&
+                            texts[2] === cols[2] && texts[3] === cols[3] &&
+                            texts[4] === cols[4]) {
+                            return i;
                         }
-                        if (anchor) {
-                            return {
-                                rowIndex: i,
-                                trigger: 'anchor',
-                                anchorHref: anchor.getAttribute('href') || ''
-                            };
+                    } else {
+                        if (texts[0].includes(cols[0]) && texts[1].includes(cols[1])) {
+                            return i;
                         }
-                        return {
-                            rowIndex: i,
-                            trigger: 'td',
-                            cursor: window.getComputedStyle(firstTd).cursor
-                        };
                     }
                 }
-                return null;
-            }""", [event, player])
+                return -1;
+            }""", [search_fields, use_exact])
+
+            row_idx = result if isinstance(result, int) else -1
+            if row_idx < 0:
+                return None
+
+            # 检测行内触发器类型
+            return self.page.evaluate("""(ri) => {
+                const rows = document.querySelectorAll('tr');
+                const tr = rows[ri];
+                if (!tr) return null;
+                const firstTd = tr.querySelectorAll('td')[0];
+                const btn = firstTd.querySelector('button');
+                if (btn) {
+                    return {
+                        rowIndex: ri,
+                        trigger: 'button',
+                        btnText: (btn.textContent || '').trim().substring(0, 40)
+                    };
+                }
+                const anchor = firstTd.querySelector('a');
+                if (anchor) {
+                    return {rowIndex: ri, trigger: 'anchor', anchorHref: anchor.getAttribute('href') || ''};
+                }
+                return {rowIndex: ri, trigger: 'td'};
+            }""", row_idx)
         except Exception:
             return None
 
@@ -579,27 +599,21 @@ class StakeScraper:
                 break
             time.sleep(0.5)
 
-        # 核对弹窗内容是否与当前投注匹配（赛事、玩家、赔率、金额 4 项全部匹配）
-        expected_event = bet.get('event', '')[:20]
-        expected_player = bet.get('player', '')
+        # 核对弹窗内容是否与当前投注匹配（赔率 + 金额 2 项必须匹配）
         expected_odds = bet.get('odds', '')[:6]
         expected_amount = bet.get('amount', '')[:10]
         for verify_attempt in range(2):
             modal_info = self._extract_modal_info()
-            event_ok = expected_event and expected_event in modal_info.get('event', '')
-            player_ok = expected_player and expected_player in modal_info.get('player', '')
             odds_ok = expected_odds and expected_odds in modal_info.get('odds', '')
             amount_ok = expected_amount and expected_amount in modal_info.get('amount', '')
-            all_ok = event_ok and player_ok and odds_ok and amount_ok
+            all_ok = odds_ok and amount_ok
             if all_ok:
                 break
             if verify_attempt == 0:
                 logger.info(
-                    f"弹窗不匹配, 重试: expect event='{expected_event}' player='{expected_player}' "
-                    f"odds='{expected_odds}' amount='{expected_amount}' "
-                    f"got event='{modal_info.get('event','')[:20]}' player='{modal_info.get('player','')}' "
-                    f"odds='{modal_info.get('odds','')}' amount='{modal_info.get('amount','')}' "
-                    f"match={event_ok}/{player_ok}/{odds_ok}/{amount_ok}"
+                    f"弹窗不匹配, 重试: expect odds='{expected_odds}' amount='{expected_amount}' "
+                    f"got odds='{modal_info.get('odds','')}' amount='{modal_info.get('amount','')}' "
+                    f"match={odds_ok}/{amount_ok}"
                 )
                 self._dismiss_detail_panel()
                 time.sleep(0.5)
@@ -625,11 +639,9 @@ class StakeScraper:
                     return '';
                 }""")
                 logger.warning(
-                    f"弹窗不匹配, 跳过: expect event='{expected_event}' player='{expected_player}' "
-                    f"odds='{expected_odds}' amount='{expected_amount}' "
-                    f"got event='{modal_info.get('event','')[:20]}' player='{modal_info.get('player','')}' "
-                    f"odds='{modal_info.get('odds','')}' amount='{modal_info.get('amount','')}' "
-                    f"match={event_ok}/{player_ok}/{odds_ok}/{amount_ok} "
+                    f"弹窗不匹配, 跳过: expect odds='{expected_odds}' amount='{expected_amount}' "
+                    f"got odds='{modal_info.get('odds','')}' amount='{modal_info.get('amount','')}' "
+                    f"match={odds_ok}/{amount_ok} "
                     f"rawCols={bet.get('rawCols', [])} modalText={modal_full}"
                 )
                 self._dismiss_detail_panel()
