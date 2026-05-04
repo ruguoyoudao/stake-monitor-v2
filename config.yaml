@@ -51,7 +51,7 @@ notifications:
   # 触发条件
   rules:
     pass_all: false             # 关闭，仅通知大额
-    cny_threshold: 20000        # 投注额 >= ¥20,000 时发送通知
+    cny_threshold: 500000        # 投注额 >= ¥500,000 时发送通知
 
 # 日志设置
 logging:
