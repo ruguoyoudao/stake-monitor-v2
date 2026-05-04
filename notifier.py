@@ -109,13 +109,6 @@ class Notifier:
         lines.append("")
         return lines
 
-    def _format_wecom_md(self, title: str, data: list[dict]) -> str:
-        """企业微信 Markdown 格式（完整版，用于小批量）"""
-        lines = [f"## {title}", ""]
-        for item in data:
-            lines.extend(self._format_one_bet(item))
-        return "\n".join(lines)
-
     def _send_dingtalk(self, webhook_url: str, title: str, data: list[dict]):
         content = self._format_data(title, data)
         payload = {

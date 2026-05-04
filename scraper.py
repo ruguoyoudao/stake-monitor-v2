@@ -24,6 +24,14 @@ class StakeScraper:
         self._context = None
         self.page: Page | None = None
 
+    def __enter__(self):
+        self.start()
+        return self
+
+    def __exit__(self, *exc):
+        self.stop()
+        return False
+
     def start(self):
         """启动浏览器并导航到目标页面（支持持久化登录 / CDP 连接已有浏览器）"""
         self._stealth = Stealth(
@@ -46,7 +54,12 @@ class StakeScraper:
         else:
             self._launch_browser()
 
-        self.page = self._context.new_page()
+        # CDP 模式优先复用已有页面，否则创建新页面
+        if cdp_port > 0 and self._context.pages:
+            self.page = self._context.pages[-1]
+            logger.info(f"复用已有页面: {self.page.url}")
+        else:
+            self.page = self._context.new_page()
         logger.info(f"正在打开: {self.target_url}")
 
         nav_retries = self.browser_cfg.get("nav_retries", 3)
@@ -301,10 +314,9 @@ class StakeScraper:
                 pass
 
     def _find_bet_row(self, bet: dict) -> dict | None:
-        """在风云榜表格中定位匹配的 tr 行（event/player/time/odds/amount 五字段精确匹配）"""
+        """在风云榜表格中定位匹配的 tr 行（event/player/time/odds/amount 五字段精确匹配，单次 evaluate 避免 DOM 变化）"""
         raw = bet.get("rawCols", [])
         if len(raw) < 5:
-            # 回退：只用 event + player
             event = bet.get("event", "")
             player = bet.get("player", "")
             search_fields = [event, player, "", "", ""]
@@ -313,53 +325,35 @@ class StakeScraper:
             search_fields = raw[:5]
             use_exact = True
         try:
-            result = self.page.evaluate("""([cols, exact]) => {
+            return self.page.evaluate("""([cols, exact]) => {
                 const rows = document.querySelectorAll('tr');
                 for (let i = 0; i < rows.length; i++) {
                     const tds = rows[i].querySelectorAll('td');
                     if (tds.length < 5) continue;
                     const texts = Array.from(tds).map(td => (td.innerText || td.textContent || '').trim()).filter(t => t.length > 0);
                     if (texts.length < 5) continue;
-                    if (exact) {
-                        // 5 字段精确匹配（与 _extract_bet_feed 同一文本提取方式）
-                        if (texts[0] === cols[0] && texts[1] === cols[1] &&
-                            texts[2] === cols[2] && texts[3] === cols[3] &&
-                            texts[4] === cols[4]) {
-                            return i;
-                        }
-                    } else {
-                        if (texts[0].includes(cols[0]) && texts[1].includes(cols[1])) {
-                            return i;
-                        }
+                    const matched = exact
+                        ? (texts[0] === cols[0] && texts[1] === cols[1] &&
+                           texts[2] === cols[2] && texts[3] === cols[3] &&
+                           texts[4] === cols[4])
+                        : (texts[0].includes(cols[0]) && texts[1].includes(cols[1]));
+                    if (!matched) continue;
+                    // 同时检测触发器，避免二次 evaluate
+                    const firstTd = tds[0];
+                    const btn = firstTd.querySelector('button');
+                    if (btn) {
+                        return {rowIndex: i, trigger: 'button',
+                            btnText: (btn.textContent || '').trim().substring(0, 40)};
                     }
+                    const anchor = firstTd.querySelector('a');
+                    if (anchor) {
+                        return {rowIndex: i, trigger: 'anchor',
+                            anchorHref: anchor.getAttribute('href') || ''};
+                    }
+                    return {rowIndex: i, trigger: 'td'};
                 }
-                return -1;
+                return null;
             }""", [search_fields, use_exact])
-
-            row_idx = result if isinstance(result, int) else -1
-            if row_idx < 0:
-                return None
-
-            # 检测行内触发器类型
-            return self.page.evaluate("""(ri) => {
-                const rows = document.querySelectorAll('tr');
-                const tr = rows[ri];
-                if (!tr) return null;
-                const firstTd = tr.querySelectorAll('td')[0];
-                const btn = firstTd.querySelector('button');
-                if (btn) {
-                    return {
-                        rowIndex: ri,
-                        trigger: 'button',
-                        btnText: (btn.textContent || '').trim().substring(0, 40)
-                    };
-                }
-                const anchor = firstTd.querySelector('a');
-                if (anchor) {
-                    return {rowIndex: ri, trigger: 'anchor', anchorHref: anchor.getAttribute('href') || ''};
-                }
-                return {rowIndex: ri, trigger: 'td'};
-            }""", row_idx)
         except Exception:
             return None
 

@@ -55,6 +55,8 @@ def _fetch_crypto_prices():
             _crypto_cache = {"BTC": 85000, "ETH": 1800}
             _crypto_time = time.time()
             logger.warning("使用硬编码加密货币价格作为回退")
+        elif time.time() - _crypto_time > 86400:
+            logger.warning("加密货币价格已超过24小时未更新，数据可能不准确")
         return _crypto_cache
 
 
@@ -112,8 +114,8 @@ def parse_amount(amount_str: str) -> tuple[float, str]:
 
     s = amount_str.strip()
 
-    # 1. 匹配符号前缀
-    for symbol, code in SYMBOL_MAP.items():
+    # 1. 匹配符号前缀（按长度降序，避免 "C$" 先于 "CA$" 匹配）
+    for symbol, code in sorted(SYMBOL_MAP.items(), key=lambda x: len(x[0]), reverse=True):
         if s.startswith(symbol):
             val = re.sub(r"[^\d.]", "", s[len(symbol):])
             try:
@@ -197,10 +199,6 @@ def to_cny(amount_str: str, hint_currency: str = "") -> float:
     if cur in ("USDT", "USDC", "BUSD", "DAI", "TUSD"):
         cur = "USD"
 
-    # 只支持 USD 和 BTC/ETH
-    if cur != "USD" and cur not in ("BTC", "ETH"):
-        return 0
-
     rates = _fetch_rates()
     cny = rates.get("CNY", 6.84)
 
@@ -209,9 +207,16 @@ def to_cny(amount_str: str, hint_currency: str = "") -> float:
         return round(val * cny, 2)
 
     # BTC/ETH 路径
-    crypto = _fetch_crypto_prices()
-    price = crypto.get(cur, 0)
-    if price > 0:
-        return round(val * price * cny, 2)
+    if cur in ("BTC", "ETH"):
+        crypto = _fetch_crypto_prices()
+        price = crypto.get(cur, 0)
+        if price > 0:
+            return round(val * price * cny, 2)
+        return 0
+
+    # 其他法币：利用已获取的汇率做通用换算（如 EUR/GBP/CAD/INR 等）
+    rate = rates.get(cur)
+    if rate and rate > 0:
+        return round(val * cny / rate, 2)
 
     return 0

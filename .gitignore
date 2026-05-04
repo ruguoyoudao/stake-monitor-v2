@@ -3,3 +3,5 @@ browser_profile/
 *.log
 log.txt
 monitor.log
+.env
+seen_bets.json

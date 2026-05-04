@@ -1,5 +1,6 @@
 """Stake.com 风云榜监控 + 大额下注通知（CNY 汇率转换）"""
 import sys
+import os
 import re
 import logging, time
 
@@ -13,13 +14,31 @@ logging.basicConfig(
 )
 logger = logging.getLogger("monitor")
 
+# 加载 .env 文件中的环境变量
+_env_path = os.path.join(os.path.dirname(__file__), ".env")
+if os.path.exists(_env_path):
+    with open(_env_path, "r", encoding="utf-8") as _f:
+        for _line in _f:
+            _line = _line.strip()
+            if _line and not _line.startswith("#") and "=" in _line:
+                _k, _v = _line.split("=", 1)
+                os.environ.setdefault(_k.strip(), _v.strip())
+
 import yaml
 
 with open("config.yaml", "r", encoding="utf-8") as f:
     config = yaml.safe_load(f)
 
-config["browser"]["headless"] = False
-config["scraper"]["poll_interval"] = 30
+# 解析 ${ENV_VAR} 环境变量
+def _resolve_env(obj):
+    if isinstance(obj, str):
+        return re.sub(r"\$\{(\w+)\}", lambda m: os.environ.get(m.group(1), ""), obj)
+    if isinstance(obj, dict):
+        return {k: _resolve_env(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_resolve_env(v) for v in obj]
+    return obj
+config = _resolve_env(config)
 
 from scraper import StakeScraper
 from notifier import Notifier
@@ -37,7 +56,26 @@ logger.info(f"页面: {scraper.page.url}")
 logger.info(f"大额通知阈值: >= CNY{ALERT_THRESHOLD_CNY:,}")
 logger.info("=" * 60)
 
+# seen_bets 持久化：从文件恢复，首次静默采集，防止重启重发通知
+import json as _json
+SEEN_FILE = "seen_bets.json"
 seen_bets = set()
+if os.path.exists(SEEN_FILE):
+    try:
+        with open(SEEN_FILE, "r", encoding="utf-8") as _f:
+            seen_bets = set(_json.load(_f))
+        logger.info(f"已恢复 {len(seen_bets)} 条历史投注记录")
+    except Exception:
+        pass
+first_poll_done = len(seen_bets) > 0  # 有历史记录时首次静默
+
+def _save_seen():
+    try:
+        with open(SEEN_FILE, "w", encoding="utf-8") as _f:
+            _json.dump(list(seen_bets), _f)
+    except Exception:
+        pass
+
 zero_bets_streak = 0          # 连续 0 投注次数
 stale_streak = 0              # 连续无新投注次数
 scrape_err_streak = 0         # 连续数据提取失败次数
@@ -59,7 +97,11 @@ try:
             key = '|'.join(r[:4]) if len(r) >= 4 else b.get('event', '') + '|' + b.get('player', '') + '|' + b.get('time', '') + '|' + b.get('amount', '')
             if key not in seen_bets:
                 seen_bets.add(key)
-                new_bets.append(b)
+                if first_poll_done:  # 首次恢复时静默，不触发通知
+                    new_bets.append(b)
+        if not first_poll_done:
+            first_poll_done = True
+            _save_seen()
 
         logger.info(f"[{timestamp}] #{poll_count} bets={len(bets)}(new={len(new_bets)})")
 
@@ -131,7 +173,7 @@ try:
             scrape_err_streak += 1
             zero_bets_streak = 0
             stale_streak = 0
-            if scrape_err_streak == ANOMALY_THRESHOLD:
+            if scrape_err_streak >= ANOMALY_THRESHOLD and scrape_err_streak % ANOMALY_THRESHOLD == 0:
                 notifier.send(
                     f"数据提取异常 - {timestamp}",
                     [{"event": f"连续 {scrape_err_streak} 轮数据提取失败，页面可能关闭",
@@ -142,7 +184,7 @@ try:
         elif len(bets) == 0:
             zero_bets_streak += 1
             stale_streak = 0
-            if zero_bets_streak == ANOMALY_THRESHOLD:
+            if zero_bets_streak >= ANOMALY_THRESHOLD and zero_bets_streak % ANOMALY_THRESHOLD == 0:
                 notifier.send(
                     f"数据异常警告 - {timestamp}",
                     [{"event": f"连续 {zero_bets_streak} 轮无投注数据",
@@ -153,7 +195,7 @@ try:
         elif len(new_bets) == 0:
             zero_bets_streak = 0
             stale_streak += 1
-            if stale_streak == ANOMALY_THRESHOLD:
+            if stale_streak >= ANOMALY_THRESHOLD and stale_streak % ANOMALY_THRESHOLD == 0:
                 notifier.send(
                     f"数据异常警告 - {timestamp}",
                     [{"event": f"连续 {stale_streak} 轮无新投注，feed 可能停滞",
@@ -166,6 +208,7 @@ try:
             stale_streak = 0
             scrape_err_streak = 0
 
+        _save_seen()
         time.sleep(config["scraper"]["poll_interval"])
 
 except KeyboardInterrupt:

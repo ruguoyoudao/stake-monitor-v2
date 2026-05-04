@@ -41,7 +41,7 @@ notifications:
   # 企业微信机器人 Webhook
   wecom:
     enabled: true
-    webhook_url: "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=b2832668-cf86-442c-92bf-f0dbc6adae51"
+    webhook_url: "${WECOM_WEBHOOK_URL}"
 
   # 钉钉机器人 Webhook
   dingtalk:
