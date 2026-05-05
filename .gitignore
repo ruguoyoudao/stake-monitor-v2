@@ -5,3 +5,10 @@ log.txt
 monitor.log
 .env
 seen_bets.json
+large_bets.json
+cluster_alerts.json
+captured_bets.json
+capture_progress.json
+capture_bets.log
+*~
+*.un~

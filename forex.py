@@ -16,7 +16,7 @@ SYMBOL_MAP = {
     "₩": "KRW", "CHF": "CHF", "€": "EUR", "£": "GBP",
     "₿": "BTC", "฿": "THB", "₺": "TRY", "zł": "PLN",
     "Kč": "CZK", "Ft": "HUF", "kr": "SEK", "RM": "MYR",
-    "Rp": "IDR", "₱": "PHP", "฿": "THB",
+    "Rp": "IDR", "₱": "PHP",
 }
 
 # 缓存汇率

@@ -26,6 +26,76 @@ class Notifier:
         if dingtalk_cfg.get("enabled"):
             self._send_dingtalk(dingtalk_cfg["webhook_url"], title, data)
 
+    def send_cluster_alert(self, title: str, cluster_data: dict):
+        """聚类跟注预警专用格式
+
+        cluster_data: {
+            event, market, outcome, count, players, total_cny, latest_odds
+        }
+        """
+        if not self.enabled:
+            return
+
+        wecom_cfg = self.config.get("wecom", {})
+        dingtalk_cfg = self.config.get("dingtalk", {})
+
+        content = self._format_cluster(cluster_data)
+        payload = {"msgtype": "markdown", "markdown": {"content": content}}
+
+        if wecom_cfg.get("enabled"):
+            try:
+                resp = requests.post(wecom_cfg["webhook_url"], json=payload, timeout=10)
+                if resp.status_code == 200:
+                    logger.info(f"企业微信聚类通知发送成功: {title}")
+                else:
+                    logger.warning(f"企业微信聚类通知失败: {resp.text}")
+            except Exception as e:
+                logger.error(f"企业微信聚类通知异常: {e}")
+
+        if dingtalk_cfg.get("enabled"):
+            try:
+                resp = requests.post(dingtalk_cfg["webhook_url"], json={
+                    "msgtype": "markdown",
+                    "markdown": {"title": title, "text": content},
+                }, timeout=10)
+                if resp.status_code == 200:
+                    logger.info(f"钉钉聚类通知发送成功: {title}")
+                else:
+                    logger.warning(f"钉钉聚类通知失败: {resp.text}")
+            except Exception as e:
+                logger.error(f"钉钉聚类通知异常: {e}")
+
+    def _format_cluster(self, d: dict) -> str:
+        odds_raw = d.get("latest_odds", "")
+        try:
+            odds_val = float(odds_raw or "0")
+        except ValueError:
+            odds_val = 0
+        if odds_val < 1.2:
+            odds_color = "comment"
+        elif odds_val < 1.4:
+            odds_color = "info"
+        else:
+            odds_color = "warning"
+
+        players_str = ", ".join(d.get("players", [])[:8])
+        if len(d.get("players", [])) > 8:
+            players_str += "..."
+
+        lines = [
+            f"## {d.get('title', '跟注预警')}",
+            "",
+            f"> **赛事**: {d.get('event', '')}",
+            f"> **玩法**: {d.get('market', '')}",
+            f"> **结果**: {d.get('outcome', '')}",
+            f"> **累积**: {d.get('count', 0)} 条大额下注",
+            f"> **玩家**: {players_str}",
+            f'> **赔率**: <font color="{odds_color}">{odds_raw}{"x" if odds_val > 0 else ""}</font>',
+            f"> **总金额 CNY**: <font color=\"warning\">{d.get('total_cny', 0):,.0f}</font>",
+        ]
+        lines.append("")
+        return "\n".join(lines)
+
     def _format_data(self, title: str, data: list[dict]) -> str:
         """将数据格式化为 Markdown 通知内容"""
         lines = [f"## {title}", ""]

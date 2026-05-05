@@ -207,8 +207,10 @@ class StakeScraper:
             pass
         logger.warning(f"等待页面就绪超时 ({max_wait}s)，当前 title={title[:80] if title else 'unknown'}")
 
-    def fetch_data(self) -> list[dict]:
-        """从页面提取投注数据（赔率 + 玩家投注流水）"""
+    def fetch_data(self, types: list[str] | None = None) -> list[dict]:
+        """从页面提取投注数据（赔率 + 玩家投注流水）
+        types: 可选过滤，如 ['bet_feed'] 仅提取风云榜
+        """
         if not self.page:
             return []
 
@@ -219,9 +221,14 @@ class StakeScraper:
             return results
 
         try:
+            include_sports = types is None or "sports_events" in types
+            include_feed = types is None or "bet_feed" in types
+
             if "sports" in url:
-                results.extend(self._extract_sports_events())
-                results.extend(self._extract_bet_feed())
+                if include_sports:
+                    results.extend(self._extract_sports_events())
+                if include_feed:
+                    results.extend(self._extract_bet_feed())
             elif "casino" in url:
                 results.extend(self._extract_casino_events())
 
@@ -406,20 +413,22 @@ class StakeScraper:
 
     def _get_share_link_from_detail(self, timeout: float = 10) -> str:
         """从详情弹窗中通过复制按钮获取分享链接（拦截 clipboard）"""
+        # 安装 clipboard 拦截器（仅一次，不在循环内重复安装）
+        self.page.evaluate("""() => {
+            if (window.__capture_installed) return;
+            window.__captured_share_url = null;
+            window.__capture_installed = true;
+            const orig = navigator.clipboard.writeText.bind(navigator.clipboard);
+            navigator.clipboard.writeText = (text) => {
+                window.__captured_share_url = text;
+                return orig(text);
+            };
+        }""")
+
         start = time.time()
         while time.time() - start < timeout:
             try:
-                # 1. 先安装 clipboard 拦截器
-                self.page.evaluate("""() => {
-                    window.__captured_share_url = null;
-                    const orig = navigator.clipboard.writeText.bind(navigator.clipboard);
-                    navigator.clipboard.writeText = (text) => {
-                        window.__captured_share_url = text;
-                        return orig(text);
-                    };
-                }""")
-
-                # 2. 查找 bet detail 弹窗中的"复制"按钮（通常有两个：第2个是分享链接）
+                # 查找 bet detail 弹窗中的"复制"按钮（通常有两个：第2个是分享链接）
                 btn_info = self.page.evaluate("""() => {
                     const modals = document.querySelectorAll(
                         '[class*="fixed"][class*="justify-center"]'
@@ -443,7 +452,7 @@ class StakeScraper:
                     time.sleep(1)
                     continue
 
-                # 3. 依次点击每个"复制"按钮，检查捕获的 URL 哪个是分享链接
+                # 依次点击每个"复制"按钮，检查捕获的 URL 哪个是分享链接
                 #    分享链接格式: /sports/home?iid=...&modal=bet
                 captured_url = ''
                 total_btns = btn_info.get("count", 0)
@@ -482,7 +491,7 @@ class StakeScraper:
                 if captured_url:
                     return captured_url
 
-                # 4. 如果 clipboard 没拦截到，从弹窗提取 Bet ID 构造分享链接
+                # 如果 clipboard 没拦截到，从弹窗提取 Bet ID 构造分享链接
                 fallback = self.page.evaluate("""() => {
                     const modals = document.querySelectorAll(
                         '[class*="fixed"][class*="justify-center"]'
@@ -509,7 +518,13 @@ class StakeScraper:
         return ''
 
     def _extract_modal_info(self) -> dict:
-        """从当前 bet detail 弹窗中提取赛事/玩家/赔率/投注额（用于核对）"""
+        """从当前 bet detail 弹窗中提取赛事/玩家/赔率/投注额/玩法/下注结果
+
+        弹窗文本结构（单关投注）:
+            状态行... → [market] → [outcome] → [inline_odds] → 赔率 → [赔率值] → 投注额 → [金额]
+        market/outcome 无标签行，靠"赔率"标签的相对位置反推:
+            market = lines[赔率_idx - 3], outcome = lines[赔率_idx - 2]
+        """
         return self.page.evaluate("""() => {
             const modals = document.querySelectorAll(
                 '[class*="fixed"][class*="justify-center"]'
@@ -519,6 +534,18 @@ class StakeScraper:
                 if (!text.includes('ID')) continue;
                 const lines = text.split('\\n').map(l => l.trim()).filter(Boolean);
                 let player = '', event = '', odds = '', amount = '';
+                let market = '', outcome = '';
+
+                // 找"赔率"/"Odds"标签行（反推 market/outcome 的锚点）
+                let oddsLabelIdx = -1;
+                for (let i = lines.length - 1; i >= 0; i--) {
+                    const ln = lines[i];
+                    if (ln === '赔率' || ln === 'Odds' || ln === 'odds') {
+                        oddsLabelIdx = i;
+                        break;
+                    }
+                }
+
                 for (let i = 0; i < lines.length; i++) {
                     if (lines[i].includes('放置在') || lines[i].includes('Placed by')) {
                         player = (lines[i + 1] || '');
@@ -527,29 +554,55 @@ class StakeScraper:
                     if (/\\d{1,2}[:.]\\d{2}\\s+\\d{4}/.test(lines[i]) && i + 1 < lines.length) {
                         event = (lines[i + 1] || '');
                     }
-                    // 赔率行（中文 "赔率" 的下一行）
-                    if (lines[i] === '赔率' && i + 1 < lines.length) {
+                    // 赔率标签 → 下一行是赔率值
+                    if ((lines[i] === '赔率' || lines[i] === 'Odds' || lines[i] === 'odds') && i + 1 < lines.length) {
                         odds = lines[i + 1];
                     }
-                    // 投注额（中文 "投注额" 的下一行）
-                    if (lines[i] === '投注额' && i + 1 < lines.length) {
+                    // 投注额标签 → 下一行是金额
+                    if ((lines[i] === '投注额' || lines[i] === 'Stake' || lines[i] === 'Amount') && i + 1 < lines.length) {
                         amount = lines[i + 1];
                     }
                 }
-                return {event: event, player: player, odds: odds, amount: amount};
+
+                // 基于赔率标签反推 market/outcome（单关结构: market → outcome → inline_odds → 赔率）
+                if (oddsLabelIdx >= 3) {
+                    const rawMkt = lines[oddsLabelIdx - 3] || '';
+                    const rawOut = lines[oddsLabelIdx - 2] || '';
+                    // 验证：market 不应该是纯数字、比分、过长文本
+                    const isNum = /^[\\d.,]+$/.test(rawMkt);
+                    const isScore = /^\\d{1,2}[-:]\\d{1,2}$/.test(rawMkt);
+                    const tooLong = rawMkt.length > 80;
+                    if (!isNum && !isScore && !tooLong && rawMkt !== rawOut) {
+                        market = rawMkt;
+                        outcome = rawOut;
+                    }
+                }
+
+                return {event: event, player: player, odds: odds, amount: amount, market: market, outcome: outcome};
             }
-            return {event: '', player: '', odds: '', amount: ''};
+            return {event: '', player: '', odds: '', amount: '', market: '', outcome: ''};
         }""")
 
-    def _open_bet_detail(self, bet: dict) -> str:
-        """点击风云榜某行的赛事链接，打开详情面板并提取分享链接"""
-        row_info = self._find_bet_row(bet)
+    def _open_bet_detail(self, bet: dict) -> dict:
+        """点击风云榜某行的赛事链接，打开详情面板并提取分享链接+玩法+结果
+
+        首次调用通过 _find_bet_row 定位行并缓存到 bet['_cached_row']。
+        重试（extract_details_for_bets 二次调用）时复用缓存，避免 DOM 变化导致定位漂移。
+        """
+        # 优先使用缓存的行定位（来自上一次失败调用）
+        row_info = bet.pop('_cached_row', None)
+        if row_info is None:
+            row_info = self._find_bet_row(bet)
+
         if not row_info:
             logger.info(
                 f"未找到匹配行: {bet.get('event','')[:40]} | "
                 f"{bet.get('player','')[:15]}"
             )
-            return ''
+            return {}
+
+        # 缓存行信息，供 extract_details_for_bets 重试时复用
+        bet['_cached_row'] = row_info
 
         try:
             trigger = row_info.get("trigger", "td")
@@ -576,7 +629,7 @@ class StakeScraper:
             logger.info(f"点击完成: {bet.get('event','')[:40]}")
         except Exception as e:
             logger.info(f"点击赛事链接失败: {e}")
-            return ''
+            return {}
 
         # 等待新弹窗出现（含 Bet ID）
         for _ in range(15):
@@ -639,36 +692,54 @@ class StakeScraper:
                     f"rawCols={bet.get('rawCols', [])} modalText={modal_full}"
                 )
                 self._dismiss_detail_panel()
-                return ''
+                return {}
 
         share_link = self._get_share_link_from_detail()
         if share_link:
             logger.info(f"获取分享链接: {share_link}")
+
+        # 提取玩法和下注结果（弹窗仍打开中）
+        final_info = self._extract_modal_info()
+        market = final_info.get('market', '')
+        outcome = final_info.get('outcome', '')
+
         self._dismiss_detail_panel()
-        return share_link
+        bet.pop('_cached_row', None)  # 成功完成，清理缓存
+        return {"share_link": share_link, "market": market, "outcome": outcome}
 
     def extract_details_for_bets(self, bets: list[dict]) -> list[dict]:
-        """对一批投注获取分享链接（失败重试1次）"""
+        """对一批投注获取分享链接+玩法+结果（失败重试1次）"""
         results = []
         for bet in bets:
             # 先清除可能残留的弹窗
             self._dismiss_detail_panel()
-            link = self._open_bet_detail(bet)
-            if not link:
+            detail = self._open_bet_detail(bet)
+            if not detail:
                 logger.info(
-                    f"首次获取投注分享链接失败，1秒后重试: "
+                    f"首次获取投注详情失败，1秒后重试: "
                     f"{bet.get('event','')[:30]}"
                 )
                 time.sleep(1)
                 self._dismiss_detail_panel()
-                link = self._open_bet_detail(bet)
-            merged = {**bet, "share_link": link} if link else bet
-            if not link:
+                detail = self._open_bet_detail(bet)
+            linkshare = detail.get("share_link", "") if detail else ""
+            merged = {
+                **bet,
+                "share_link": linkshare,
+                "market": detail.get("market", "") if detail else "",
+                "outcome": detail.get("outcome", "") if detail else "",
+            }
+            if not linkshare:
                 logger.info(
                     f"未获取到分享链接: event={bet.get('event','')[:40]} "
                     f"player={bet.get('player','')} amount={bet.get('amount','')}"
                 )
+            if detail.get("market") or detail.get("outcome"):
+                logger.info(
+                    f"玩法/结果: market={detail.get('market','')} outcome={detail.get('outcome','')}"
+                )
             results.append(merged)
+            bet.pop('_cached_row', None)  # 确保缓存不污染后续逻辑
         return results
 
     def _extract_sports_events(self) -> list[dict]:
