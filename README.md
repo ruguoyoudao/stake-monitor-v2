@@ -12,6 +12,7 @@
 - **弹窗采集**：大额投注自动点击弹窗，获取分享链接 + 玩法(market) + 下注结果(outcome)
 - **本地存储**：大额投注保存到 `large_bets.json`（含时间戳）
 - **跟注聚类**：同一(event+market+outcome)累积 ≥3 条大额下注时，企业微信推送跟注预警
+- **数据可视化**：Streamlit Web 交互式大额投注看板，支持筛选(币种/赔率/赛事搜索/时间范围) + 图表分析(金额分布/赔率vs金额/赛事热度/时间线/赛事玩法分析) + 聚类结果展示
 - **弹窗批量采集**：`capture_bets.py` 可一次性采集所有风云榜投注的完整弹窗信息
 
 ## 安装
@@ -98,6 +99,13 @@ python run_monitor.py
 > 总金额 CNY: 183,055
 ```
 
+### 数据可视化
+
+```powershell
+streamlit run visualize.py
+# 交互式看板
+```
+
 ### 弹窗批量采集
 
 ```powershell
@@ -119,5 +127,6 @@ python capture_bets.py
 | `docs.md` | 模块详细文档 |
 | `large_bets.json` | 大额投注记录（累积追加） |
 | `seen_bets.json` | 已处理投注 key（去重） |
+| `visualize.py` | Streamlit 数据可视化看板 |
 | `cluster_alerts.json` | 聚类通知记录（{key: last_notified_count}） |
 | `captured_bets.json` | 批量采集结果（含弹窗完整文本） |

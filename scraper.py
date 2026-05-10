@@ -631,8 +631,8 @@ class StakeScraper:
             logger.info(f"点击赛事链接失败: {e}")
             return {}
 
-        # 等待新弹窗出现（含 Bet ID）
-        for _ in range(15):
+        # 等待新弹窗出现（含 Bet ID），最多 40×0.5s=20s
+        for _ in range(40):
             has_modal = self.page.evaluate("""() => {
                 const modals = document.querySelectorAll(
                     '[class*="fixed"][class*="justify-center"]'

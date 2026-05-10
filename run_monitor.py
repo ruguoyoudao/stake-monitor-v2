@@ -251,8 +251,8 @@ try:
                 flag = " >>>" if amount_cny >= ALERT_THRESHOLD_CNY else ""
                 if amount_cny >= ALERT_THRESHOLD_CNY:
                     # 过滤：跳过复式投注
-                    if '复式' in event:
-                        logger.info(f"    skip(复式): {event[:30]}")
+                    if '复式' in event or '多项' in event:
+                        logger.info(f"    skip(复式/多项): {event[:30]}")
                     else:
                         large_bets.append({**b, "cny": amount_cny})
 
