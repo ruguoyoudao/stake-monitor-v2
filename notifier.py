@@ -65,6 +65,46 @@ class Notifier:
             except Exception as e:
                 logger.error(f"钉钉聚类通知异常: {e}")
 
+    
+    def send_anomaly_alert(self, anomaly_type: str, streak: int, detail: str):
+        """异常告警通知"""
+        if not self.enabled:
+            return
+
+        wecom_cfg = self.config.get("wecom", {})
+        dingtalk_cfg = self.config.get("dingtalk", {})
+
+        content = (
+            f"## ⚠️ 数据异常告警\n\n"
+            f"> **类型**: {anomaly_type}\n"
+            f"> **连续轮数**: {streak}\n"
+            f"> **详情**: {detail}\n"
+        )
+        payload = {"msgtype": "markdown", "markdown": {"content": content}}
+
+        if wecom_cfg.get("enabled"):
+            try:
+                resp = requests.post(wecom_cfg["webhook_url"], json=payload, timeout=10)
+                if resp.status_code == 200:
+                    logger.info(f"企业微信异常告警发送成功: {anomaly_type}")
+                else:
+                    logger.warning(f"企业微信异常告警失败: {resp.text}")
+            except Exception as e:
+                logger.error(f"企业微信异常告警异常: {e}")
+
+        if dingtalk_cfg.get("enabled"):
+            try:
+                resp = requests.post(dingtalk_cfg["webhook_url"], json={
+                    "msgtype": "markdown",
+                    "markdown": {"title": "数据异常告警", "text": content},
+                }, timeout=10)
+                if resp.status_code == 200:
+                    logger.info(f"钉钉异常告警发送成功: {anomaly_type}")
+                else:
+                    logger.warning(f"钉钉异常告警失败: {resp.text}")
+            except Exception as e:
+                logger.error(f"钉钉异常告警异常: {e}")
+
     def _format_cluster(self, d: dict) -> str:
         odds_raw = d.get("latest_odds", "")
         try:

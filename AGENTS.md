@@ -93,7 +93,7 @@ find row (5字段精确匹配) → click → wait modal → verify (odds+amount)
 
 - **聚类通知**：使用 `notifier.send_cluster_alert()` — 专用格式含 玩法/结果/累积/玩家/总金额
 - **大额单笔**：**不再发企业微信**，仅保存到 `large_bets.json`
-- **异常监控**：连续10轮异常仅写 `logger.warning`，不通知
+- **异常监控**：连续10轮异常写 `logger.warning` + 企业微信通知（数据提取异常/无投注/Feed停滞三种类型）
 - 企业微信Markdown：3色 `info`(蓝) / `warning`(橙红) / `comment`(灰)
 - 赔率三色：`<1.2` 灰 / `1.2~1.4` 蓝 / `>=1.4` 红
 

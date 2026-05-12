@@ -74,9 +74,9 @@ while True:
 
 | 条件 | 连续次数 | 日志级别 | 典型原因 |
 |------|---------|---------|---------|
-| `len(data) == 0` | ≥ 10 | WARNING | 浏览器页面关闭/崩溃 |
-| `len(bets) == 0` | ≥ 10 | WARNING | 投注数据未加载 |
-| `len(new_bets) == 0` | ≥ 10 | WARNING | feed 停滞 |
+| `len(data) == 0` | ≥ 10 | WARNING + 企业微信通知 | 浏览器页面关闭/崩溃 |
+| `len(bets) == 0` | ≥ 10 | WARNING + 企业微信通知 | 投注数据未加载 |
+| `len(new_bets) == 0` | ≥ 10 | WARNING + 企业微信通知 | feed 停滞 |
 
 ### 状态文件
 

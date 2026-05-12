@@ -206,7 +206,7 @@ def _check_clusters():
 zero_bets_streak = 0          # 连续 0 投注次数
 stale_streak = 0              # 连续无新投注次数
 scrape_err_streak = 0         # 连续数据提取失败次数
-ANOMALY_THRESHOLD = 10        # 连续 N 次异常触发日志警告
+ANOMALY_THRESHOLD = 10        # 连续 N 次异常触发日志警告 + 企业微信通知
 
 try:
     poll_count = 0
@@ -302,16 +302,19 @@ try:
             stale_streak = 0
             if scrape_err_streak >= ANOMALY_THRESHOLD and scrape_err_streak % ANOMALY_THRESHOLD == 0:
                 logger.warning(f"!!! 数据提取异常: 连续 {scrape_err_streak} 轮提取失败")
+                notifier.send_anomaly_alert("数据提取异常", scrape_err_streak, "连续多轮风云榜数据提取失败，请检查浏览器页面状态")
         elif len(bets) == 0:
             zero_bets_streak += 1
             stale_streak = 0
             if zero_bets_streak >= ANOMALY_THRESHOLD and zero_bets_streak % ANOMALY_THRESHOLD == 0:
                 logger.warning(f"!!! 数据异常: 连续 {zero_bets_streak} 轮无投注数据")
+                notifier.send_anomaly_alert("无投注数据", zero_bets_streak, "连续多轮风云榜无投注数据，请检查页面是否正常加载")
         elif len(new_bets) == 0:
             zero_bets_streak = 0
             stale_streak += 1
             if stale_streak >= ANOMALY_THRESHOLD and stale_streak % ANOMALY_THRESHOLD == 0:
                 logger.warning(f"!!! 数据异常: 连续 {stale_streak} 轮无新投注，feed 可能停滞")
+                notifier.send_anomaly_alert("Feed停滞", stale_streak, "连续多轮无新投注，风云榜 feed 可能已停止更新")
         else:
             zero_bets_streak = 0
             stale_streak = 0
