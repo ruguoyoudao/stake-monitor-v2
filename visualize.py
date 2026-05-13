@@ -241,7 +241,7 @@ else:
 st.subheader('\u6295\u6ce8\u660e\u7ec6')
 display_cols = ['saved_at', 'sport_category', 'event', 'market', 'outcome', 'player', 'odds', 'amount', 'amount_cny', 'currency']
 display_df = filtered[display_cols].copy()
-display_df.columns = ['\u65f6\u95f4', '\u8d5b\u4e8b', '\u73a9\u6cd5', '\u7ed3\u679c', '\u73a9\u5bb6', '\u8d54\u7387', '\u539f\u59cb\u91d1\u989d', 'CNY\u91d1\u989d', '\u5e01\u79cd']
+display_df.columns = ['\u65f6\u95f4', '\u9879\u76ee\u7c7b\u522b', '\u8d5b\u4e8b', '\u73a9\u6cd5', '\u7ed3\u679c', '\u73a9\u5bb6', '\u8d54\u7387', '\u539f\u59cb\u91d1\u989d', 'CNY\u91d1\u989d', '\u5e01\u79cd']
 display_df['\u65f6\u95f4'] = display_df['\u65f6\u95f4'].dt.strftime('%m-%d %H:%M')
 
 st.dataframe(
