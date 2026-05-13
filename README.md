@@ -10,6 +10,7 @@
 - **汇率转换**：USDT/USDC 按 USD 换算；BTC/ETH 对接 CoinGecko 实时价格
 - **过滤规则**：赛事含"复式"跳过；未知币种跳过；仅 CNY >= 阈值记录
 - **弹窗采集**：大额投注自动点击弹窗，获取分享链接 + 玩法(market) + 下注结果(outcome)
+- **URL解析**：通过新标签页打开分享链接，获取赛事页面 URL（含项目类别+赛事标识），解析 sport_category 和 event_slug
 - **本地存储**：大额投注保存到 `large_bets.json`（含时间戳）
 - **跟注聚类**：同一(event+market+outcome)累积 ≥3 条大额下注时，企业微信推送跟注预警
 - **数据可视化**：Streamlit Web 交互式大额投注看板，支持筛选(币种/赔率/赛事搜索/时间范围) + 图表分析(金额分布/赔率vs金额/赛事热度/时间线/赛事玩法分析) + 聚类结果展示
@@ -79,7 +80,9 @@ python run_monitor.py
     "amount_cny": 68626,
     "market": "胜平负",
     "outcome": "曼城",
-    "share_link": "https://stake.com/sports/home?iid=...",
+    "share_link": "...",
+    "sport_category": "soccer",
+    "event_slug": "premier-league",
     "saved_at": "2026-05-05T02:02:00"
   }
 ]

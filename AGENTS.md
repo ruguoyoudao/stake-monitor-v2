@@ -31,7 +31,7 @@ run_monitor.py 轮询(30s)
   → scraper.fetch_data(types=["bet_feed"])    # 仅提取风云榜，跳过体育赛事DOM扫描
     → 过滤新投注 (seen_bets.json 去重)
       → 过滤大额 (CNY >= threshold, 跳过"复式"/"多项")
-        → scraper.extract_details_for_bets()   # 点击弹窗获取 share_link + market + outcome
+        → scraper.extract_details_for_bets()   # 点击弹窗获取 share_link + market + outcome + event_url
           → 保存到 large_bets.json (含 saved_at 时间戳)
             → _check_clusters()               # 24h窗口内按(event+market+outcome)分组
               → >=3条 → notifier.send_cluster_alert() → 企业微信

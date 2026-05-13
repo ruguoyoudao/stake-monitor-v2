@@ -364,6 +364,91 @@ class StakeScraper:
         except Exception:
             return None
 
+    def _get_event_url_via_tab(self, share_link: str, event_name: str, timeout: float = 15) -> str:
+        """Open share link in a new tab, click event name to get full event page URL.
+
+        Falls back to DOM scanning first, then clicks event name to navigate.
+        Returns the path-style event URL (with /sports/{category}/...) or empty string.
+        """
+        if not share_link or not event_name:
+            return ''
+
+        new_page = None
+        try:
+            new_page = self._context.new_page()
+            new_page.goto(share_link, timeout=20000, wait_until='domcontentloaded')
+
+            # Wait for bet modal to appear
+            for _ in range(20):
+                has_modal = new_page.evaluate("""() => {
+                    const modals = document.querySelectorAll(
+                        '[class*="fixed"][class*="justify-center"]'
+                    );
+                    for (const m of modals) {
+                        if ((m.innerText || '').includes('ID')) return true;
+                    }
+                    return false;
+                }""")
+                if has_modal:
+                    break
+                time.sleep(0.5)
+
+            # Try DOM href first
+            event_url = new_page.evaluate("""() => {
+                const all = document.querySelectorAll('a[href*="/sports/"]');
+                for (const a of all) {
+                    const href = a.getAttribute('href') || '';
+                    if (href.includes('/sports/') && !href.includes('iid=') && !href.includes('modal=bet')) {
+                        return href;
+                    }
+                }
+                return '';
+            }""")
+
+            if event_url:
+                if not event_url.startswith('http'):
+                    event_url = 'https://stake.com' + event_url
+                return event_url
+
+            # Fallback: click event name to navigate to event page
+            new_page.evaluate("""(name) => {
+                const modals = document.querySelectorAll(
+                    '[class*="fixed"][class*="justify-center"]'
+                );
+                for (const modal of modals) {
+                    const text = (modal.innerText || '').trim();
+                    if (!text.includes('ID')) continue;
+                    const all = modal.querySelectorAll('*');
+                    for (const el of all) {
+                        const t = (el.textContent || '').trim();
+                        if (t === name || (t.length > 10 && name.length > 10 && t.includes(name) && el.tagName !== 'BODY')) {
+                            el.click();
+                            return;
+                        }
+                    }
+                }
+            }""", event_name)
+
+            # Wait for navigation (URL change to sports path)
+            start = time.time()
+            while time.time() - start < timeout:
+                url = new_page.url
+                if '/sports/' in url and 'iid=' not in url and 'modal=bet' not in url and 'home?' not in url:
+                    return url
+                time.sleep(0.5)
+
+            return ''
+        except Exception as e:
+            logger.info(f"获取事件URL异常: {e}")
+            return ''
+        finally:
+            if new_page:
+                try:
+                    new_page.close()
+                except Exception:
+                    pass
+
+
     def _dismiss_detail_panel(self):
         """关闭详情面板，并等待确认已消失"""
         try:
@@ -705,7 +790,8 @@ class StakeScraper:
 
         self._dismiss_detail_panel()
         bet.pop('_cached_row', None)  # 成功完成，清理缓存
-        return {"share_link": share_link, "market": market, "outcome": outcome}
+        event_url = self._get_event_url_via_tab(share_link, event_name=bet.get("event", "")) if share_link else ""
+        return {"share_link": share_link, "market": market, "outcome": outcome, "event_url": event_url}
 
     def extract_details_for_bets(self, bets: list[dict]) -> list[dict]:
         """对一批投注获取分享链接+玩法+结果（失败重试1次）"""
@@ -728,6 +814,7 @@ class StakeScraper:
                 "share_link": linkshare,
                 "market": detail.get("market", "") if detail else "",
                 "outcome": detail.get("outcome", "") if detail else "",
+            "event_url": detail.get("event_url", "") if detail else "",
             }
             if not linkshare:
                 logger.info(

@@ -165,6 +165,19 @@ while True:
 #### `_get_share_link_from_detail(timeout=10) → str`
 clipboard 拦截获取分享链接。拦截器仅安装一次（`__capture_installed` 标志）。依次点击弹窗中"复制"按钮，优先返回含 `modal=bet` 的链接，fallback 根据 Bet ID 构造。
 
+
+
+#### `_get_event_url_via_tab(share_link: str, event_name: str, timeout: float = 15) → str`
+通过新标签页打开分享链接，从弹窗 DOM 或点击赛事名跳转获取完整赛事页面 URL（含项目类别路径）。
+
+**流程**：
+1. 打开新 tab（同 Context，共享登录态）
+2. 导航到 share_link，等待弹窗出现
+3. 扫描 DOM `<a href="/sports/...">` 提取路径式 URL
+4. 若无 DOM 链接，点击弹窗中赛事名跳转至赛事页
+5. 等待 URL 变更为 `/sports/{category}/{event}/...` 格式
+6. 捕获并返回 URL，关闭 tab
+
 #### `_dismiss_detail_panel()`
 关闭弹窗：优先点 close 按钮，fallback Escape 键，轮询确认弹窗消失。
 
@@ -194,6 +207,19 @@ clipboard 拦截获取分享链接。拦截器仅安装一次（`__capture_insta
 | 3 | 代码后缀 | `110,000 USDC` | `(110000, "USDC")` |
 | 4 | 关键词 | `BTC 0.01` | `(0.01, "BTC")` |
 | 5 | 兜底数字 | 任意 | `(数字, "USD")` |
+
+
+
+#### `parse_event_url(url: str) -> dict`
+解析 Stake.com 赛事页面 URL，提取项目赛事类别和具体赛事标识。
+
+URL 格式：`https://stake.com/zh/sports/{sport_category}/{level}/{event_slug}/{bet_id}-...`
+
+返回：
+```python
+{"sport_category": "counter-strike", "event_slug": "pgl-astana-2026-t2"}
+# 或解析失败返回 {}
+```
 
 #### `to_cny(amount_str: str, hint_currency: str = "") → float`
 转换为人民币。仅支持 USDT/USDC/BTC/ETH，其他返回 0。

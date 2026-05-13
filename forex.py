@@ -220,3 +220,20 @@ def to_cny(amount_str: str, hint_currency: str = "") -> float:
         return round(val * cny / rate, 2)
 
     return 0
+
+
+def parse_event_url(url: str) -> dict:
+    """Parse sport category and event slug from Stake.com event page URL.
+
+    URL pattern:
+        https://stake.com/zh/sports/{sport_category}/{level}/{event_slug}/{bet_id}-...
+    Returns:
+        {"sport_category": "counter-strike", "event_slug": "pgl-astana-2026-t2"}
+        or empty dict on failure.
+    """
+    if not url or '/sports/' not in url:
+        return {}
+    m = re.search(r'/sports/([^/]+)/(?:[^/]+/)?([^/]+)/', url)
+    if m:
+        return {"sport_category": m.group(1), "event_slug": m.group(2)}
+    return {}

@@ -42,7 +42,7 @@ config = _resolve_env(config)
 
 from scraper import StakeScraper
 from notifier import Notifier
-from forex import to_cny, parse_amount
+from forex import to_cny, parse_amount, parse_event_url
 
 notifier = Notifier(config.get("notifications", {}))
 ALERT_THRESHOLD_CNY = config.get("notifications", {}).get("rules", {}).get("cny_threshold", 50000)
@@ -254,7 +254,7 @@ try:
                     if '复式' in event or '多项' in event:
                         logger.info(f"    skip(复式/多项): {event[:30]}")
                     else:
-                        large_bets.append({**b, "cny": amount_cny})
+                        large_bets.append({**b, "cny": amount_cny, "event_url": "", "sport_category": "", "event_slug": ""})
 
                 # 币种展示：USD 省略前缀，非 USD 显示币种；原料含字母时附加
                 amount_disp = f"{currency} {amount_val:,.0f}" if currency != "USD" else f"{amount_val:,.0f}"
@@ -265,6 +265,13 @@ try:
             if large_bets:
                 # 点击弹窗获取分享链接 + 玩法 + 下注结果
                 enriched = scraper.extract_details_for_bets(large_bets)
+                # Parse sport_category and event_slug from event_url
+                for e in enriched:
+                    url = e.get("event_url", "")
+                    if url:
+                        parsed = parse_event_url(url)
+                        e["sport_category"] = parsed.get("sport_category", "")
+                        e["event_slug"] = parsed.get("event_slug", "")
 
                 entries = []
                 for b in enriched:
@@ -283,6 +290,8 @@ try:
                         "market": b.get("market", ""),
                         "outcome": b.get("outcome", ""),
                         "share_link": b.get("share_link", ""),
+                        "sport_category": b.get("sport_category", ""),
+                        "event_slug": b.get("event_slug", ""),
                         "saved_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
                     }
                     logger.info(
