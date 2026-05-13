@@ -199,6 +199,7 @@ def _check_clusters():
                 "players": players,
                 "total_cny": sum(b.get("amount_cny", 0) for b in items),
                 "latest_odds": items[-1].get("odds", ""),
+                "sport_category": items[-1].get("sport_category", ""),
             })
             logger.info(
                 f">>> 跟注预警已发送: {event_name} | {market_name} | {outcome_name} "

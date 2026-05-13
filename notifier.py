@@ -125,6 +125,7 @@ class Notifier:
         lines = [
             f"## {d.get('title', '跟注预警')}",
             "",
+            f"> **项目**: {d.get('sport_category', '')}",
             f"> **赛事**: {d.get('event', '')}",
             f"> **玩法**: {d.get('market', '')}",
             f"> **结果**: {d.get('outcome', '')}",
