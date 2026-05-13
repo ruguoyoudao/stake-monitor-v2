@@ -267,7 +267,11 @@ try:
 
             if large_bets:
                 # 点击弹窗获取分享链接 + 玩法 + 下注结果
-                enriched = scraper.extract_details_for_bets(large_bets)
+                try:
+                    enriched = scraper.extract_details_for_bets(large_bets)
+                except Exception as e:
+                    logger.error(f"弹窗采集异常，跳过本轮 {len(large_bets)} 条: {e}")
+                    enriched = []
                 # Parse sport_category and event_slug from event_url
                 for e in enriched:
                     url = e.get("event_url", "")

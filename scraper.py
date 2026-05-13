@@ -373,6 +373,8 @@ class StakeScraper:
         if not share_link or not event_name:
             return ''
 
+        if not self._context:
+            return ''
         new_page = None
         try:
             new_page = self._context.new_page()
