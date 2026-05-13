@@ -80,6 +80,17 @@ class StakeScraper:
         self._wait_for_page_ready()
         logger.info("浏览器启动完成，开始监控...")
 
+    def refresh_page(self):
+        """刷新当前页面"""
+        if not self.page:
+            return
+        try:
+            self.page.reload(timeout=30000, wait_until='domcontentloaded')
+            logger.info("页面已刷新")
+        except Exception as e:
+            logger.warning(f"页面刷新失败: {e}")
+
+
     def _connect_via_cdp(self, port: int):
         """通过 CDP 连接已有的浏览器实例"""
         endpoint = f"http://127.0.0.1:{port}"

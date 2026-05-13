@@ -51,7 +51,8 @@ notifications:
   # 触发条件
   rules:
     pass_all: false             # 关闭，仅通知大额
-    cny_threshold: 20000        # 投注额 >= ¥500,000 时发送通知
+    cny_threshold: 20000        # 大额记录阈值(人民币)
+    single_notify_threshold: 100000  # 单笔大额独立通知阈值(人民币)
 
 # ==========================================
 # 跟注聚类检测

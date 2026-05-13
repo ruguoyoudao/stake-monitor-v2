@@ -3,13 +3,17 @@ import sys
 import os
 import re
 import logging, time
+from datetime import date
 
+
+os.makedirs("log", exist_ok=True)
+log_file = f"log/{date.today().isoformat()}.log"
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler("monitor.log", encoding="utf-8"),
+        logging.FileHandler(log_file, encoding="utf-8"),
     ],
 )
 logger = logging.getLogger("monitor")
@@ -46,6 +50,7 @@ from forex import to_cny, parse_amount, parse_event_url
 
 notifier = Notifier(config.get("notifications", {}))
 ALERT_THRESHOLD_CNY = config.get("notifications", {}).get("rules", {}).get("cny_threshold", 50000)
+SINGLE_NOTIFY_THRESHOLD = config.get("notifications", {}).get("rules", {}).get("single_notify_threshold", 100000)
 CLUSTER_CFG = config.get("clustering", {})
 CLUSTER_ENABLED = CLUSTER_CFG.get("enabled", False)
 CLUSTER_MIN_COUNT = CLUSTER_CFG.get("min_count", 3)
@@ -209,7 +214,10 @@ def _check_clusters():
 zero_bets_streak = 0          # 连续 0 投注次数
 stale_streak = 0              # 连续无新投注次数
 scrape_err_streak = 0         # 连续数据提取失败次数
-ANOMALY_THRESHOLD = 10        # 连续 N 次异常触发日志警告 + 企业微信通知
+scrape_err_refreshed = False   # 数据提取异常已刷新
+data_empty_refreshed = False   # 无投注数据已刷新
+stale_refreshed = False        # feed停滞已刷新
+ANOMALY_THRESHOLD = 5         # 连续 N 次异常触发日志警告 + 企业微信通知
 
 try:
     poll_count = 0
@@ -314,6 +322,23 @@ try:
                     )
                     entries.append(entry)
 
+                # 单笔大额通知：>= single_notify_threshold
+                single_big_bets = [e for e in enriched if e.get("cny", 0) >= SINGLE_NOTIFY_THRESHOLD]
+                if single_big_bets:
+                    single_data = []
+                    for sb in single_big_bets:
+                        single_data.append({
+                            "event": sb.get("event", ""),
+                            "player": sb.get("player", ""),
+                            "time": sb.get("time", ""),
+                            "odds": sb.get("odds", ""),
+                            "amount": sb.get("amount", ""),
+                            "cny": sb.get("cny", 0),
+                            "share_link": sb.get("share_link", ""),
+                        })
+                    notifier.send(f"大额下注警告 - {timestamp}", single_data)
+                    logger.info(f">>> 已发送 {len(single_big_bets)} 条单笔大额通知")
+
                 _save_large_bets(entries)
 
                 if CLUSTER_ENABLED:
@@ -324,18 +349,30 @@ try:
             scrape_err_streak += 1
             zero_bets_streak = 0
             stale_streak = 0
+            if scrape_err_streak == 1 and not scrape_err_refreshed:
+                logger.warning("!!! 数据提取异常，尝试刷新网页恢复...")
+                scraper.refresh_page()
+                scrape_err_refreshed = True
             if scrape_err_streak >= ANOMALY_THRESHOLD and scrape_err_streak % ANOMALY_THRESHOLD == 0:
                 logger.warning(f"!!! 数据提取异常: 连续 {scrape_err_streak} 轮提取失败")
                 notifier.send_anomaly_alert("数据提取异常", scrape_err_streak, "连续多轮风云榜数据提取失败，请检查浏览器页面状态")
         elif len(bets) == 0:
             zero_bets_streak += 1
             stale_streak = 0
+            if zero_bets_streak == 1 and not data_empty_refreshed:
+                logger.warning("!!! 无投注数据，尝试刷新网页恢复...")
+                scraper.refresh_page()
+                data_empty_refreshed = True
             if zero_bets_streak >= ANOMALY_THRESHOLD and zero_bets_streak % ANOMALY_THRESHOLD == 0:
                 logger.warning(f"!!! 数据异常: 连续 {zero_bets_streak} 轮无投注数据")
                 notifier.send_anomaly_alert("无投注数据", zero_bets_streak, "连续多轮风云榜无投注数据，请检查页面是否正常加载")
         elif len(new_bets) == 0:
             zero_bets_streak = 0
             stale_streak += 1
+            if stale_streak == 1 and not stale_refreshed:
+                logger.warning("!!! Feed 停滞，尝试刷新网页恢复...")
+                scraper.refresh_page()
+                stale_refreshed = True
             if stale_streak >= ANOMALY_THRESHOLD and stale_streak % ANOMALY_THRESHOLD == 0:
                 logger.warning(f"!!! 数据异常: 连续 {stale_streak} 轮无新投注，feed 可能停滞")
                 notifier.send_anomaly_alert("Feed停滞", stale_streak, "连续多轮无新投注，风云榜 feed 可能已停止更新")
@@ -343,6 +380,9 @@ try:
             zero_bets_streak = 0
             stale_streak = 0
             scrape_err_streak = 0
+            scrape_err_refreshed = False
+            data_empty_refreshed = False
+            stale_refreshed = False
 
         _save_seen()
         time.sleep(config["scraper"]["poll_interval"])
