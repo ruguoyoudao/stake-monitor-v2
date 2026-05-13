@@ -119,6 +119,7 @@ find row (5字段精确匹配) → click → wait modal → verify (odds+amount)
 | 条件 | 动作 |
 |------|------|
 | event 含 "复式" 或 "多项" | skip（不进入 large_bets.json） |
+| `sport_category` 不在白名单中 | skip（config.yaml filters.sport_categories） |
 | `to_cny()` 返回 0 | skip（未知币种） |
 | `amount_cny < threshold` | 不记录大额 |
 

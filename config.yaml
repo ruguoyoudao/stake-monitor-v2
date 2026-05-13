@@ -62,6 +62,15 @@ clustering:
   step: 1                         # 之后每增加step条再通知一次
   window_hours: 24                # 仅统计最近N小时内的大额投注，0=不限
 
+# ==========================================
+# 项目类别白名单
+# ==========================================
+filters:
+  sport_categories:
+    - "counter-strike"
+    - "dota-2"
+    - "league-of-legends"       # 仅记录这些项目类别的大额投注
+
 # 日志设置
 logging:
   level: "INFO"                 # DEBUG / INFO / WARNING / ERROR

@@ -49,6 +49,8 @@ ALERT_THRESHOLD_CNY = config.get("notifications", {}).get("rules", {}).get("cny_
 CLUSTER_CFG = config.get("clustering", {})
 CLUSTER_ENABLED = CLUSTER_CFG.get("enabled", False)
 CLUSTER_MIN_COUNT = CLUSTER_CFG.get("min_count", 3)
+FILTERS_CFG = config.get("filters", {})
+SPORT_WHITELIST = FILTERS_CFG.get("sport_categories", [])
 CLUSTER_STEP = CLUSTER_CFG.get("step", 1)
 CLUSTER_WINDOW_HRS = CLUSTER_CFG.get("window_hours", 24)
 
@@ -272,6 +274,14 @@ try:
                         parsed = parse_event_url(url)
                         e["sport_category"] = parsed.get("sport_category", "")
                         e["event_slug"] = parsed.get("event_slug", "")
+
+                # 白名单过滤：仅保留指定项目类别
+                if SPORT_WHITELIST:
+                    before = len(enriched)
+                    enriched = [e for e in enriched if e.get("sport_category", "") in SPORT_WHITELIST]
+                    skipped = before - len(enriched)
+                    if skipped:
+                        logger.info(f"    skip(非白名单类别): {skipped} 条")
 
                 entries = []
                 for b in enriched:
