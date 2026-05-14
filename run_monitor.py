@@ -347,11 +347,18 @@ try:
                 if CLUSTER_ENABLED:
                     _check_clusters()
 
+        # 数据提取正常 → 统一重置所有异常计数器和标志
+        if len(data) > 0:
+            scrape_err_streak = 0
+            scrape_err_refreshed = False
+            zero_bets_streak = 0
+            data_empty_refreshed = False
+            stale_streak = 0
+            stale_refreshed = False
+
         # 数据提取异常检测（data 完全为空 = scrape 失败）
         if len(data) == 0:
             scrape_err_streak += 1
-            zero_bets_streak = 0
-            stale_streak = 0
             if scrape_err_streak == 1 and not scrape_err_refreshed:
                 logger.warning("!!! 数据提取异常，尝试刷新网页恢复...")
                 scraper.refresh_page()
@@ -361,7 +368,6 @@ try:
                 notifier.send_anomaly_alert("数据提取异常", scrape_err_streak, "连续多轮风云榜数据提取失败，请检查浏览器页面状态")
         elif len(bets) == 0:
             zero_bets_streak += 1
-            stale_streak = 0
             if zero_bets_streak == 1 and not data_empty_refreshed:
                 logger.warning("!!! 无投注数据，尝试刷新网页恢复...")
                 scraper.refresh_page()
@@ -370,7 +376,6 @@ try:
                 logger.warning(f"!!! 数据异常: 连续 {zero_bets_streak} 轮无投注数据")
                 notifier.send_anomaly_alert("无投注数据", zero_bets_streak, "连续多轮风云榜无投注数据，请检查页面是否正常加载")
         elif len(new_bets) == 0:
-            zero_bets_streak = 0
             stale_streak += 1
             if stale_streak == 1 and not stale_refreshed:
                 logger.warning("!!! Feed 停滞，尝试刷新网页恢复...")
@@ -379,13 +384,6 @@ try:
             if stale_streak >= ANOMALY_THRESHOLD and stale_streak % ANOMALY_THRESHOLD == 0:
                 logger.warning(f"!!! 数据异常: 连续 {stale_streak} 轮无新投注，feed 可能停滞")
                 notifier.send_anomaly_alert("Feed停滞", stale_streak, "连续多轮无新投注，风云榜 feed 可能已停止更新")
-        else:
-            zero_bets_streak = 0
-            stale_streak = 0
-            scrape_err_streak = 0
-            scrape_err_refreshed = False
-            data_empty_refreshed = False
-            stale_refreshed = False
 
         _save_seen()
         time.sleep(config["scraper"]["poll_interval"])
