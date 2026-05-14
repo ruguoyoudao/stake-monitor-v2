@@ -359,7 +359,7 @@ try:
         # 数据提取异常检测（data 完全为空 = scrape 失败）
         if len(data) == 0:
             scrape_err_streak += 1
-            if scrape_err_streak == 1 and not scrape_err_refreshed:
+            if scrape_err_streak == ANOMALY_THRESHOLD and not scrape_err_refreshed:
                 logger.warning("!!! 数据提取异常，尝试刷新网页恢复...")
                 scraper.refresh_page()
                 scrape_err_refreshed = True
@@ -368,7 +368,7 @@ try:
                 notifier.send_anomaly_alert("数据提取异常", scrape_err_streak, "连续多轮风云榜数据提取失败，请检查浏览器页面状态")
         elif len(bets) == 0:
             zero_bets_streak += 1
-            if zero_bets_streak == 1 and not data_empty_refreshed:
+            if zero_bets_streak == ANOMALY_THRESHOLD and not data_empty_refreshed:
                 logger.warning("!!! 无投注数据，尝试刷新网页恢复...")
                 scraper.refresh_page()
                 data_empty_refreshed = True
@@ -377,7 +377,7 @@ try:
                 notifier.send_anomaly_alert("无投注数据", zero_bets_streak, "连续多轮风云榜无投注数据，请检查页面是否正常加载")
         elif len(new_bets) == 0:
             stale_streak += 1
-            if stale_streak == 1 and not stale_refreshed:
+            if stale_streak == ANOMALY_THRESHOLD and not stale_refreshed:
                 logger.warning("!!! Feed 停滞，尝试刷新网页恢复...")
                 scraper.refresh_page()
                 stale_refreshed = True
