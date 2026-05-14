@@ -335,6 +335,9 @@ try:
                             "amount": sb.get("amount", ""),
                             "cny": sb.get("cny", 0),
                             "share_link": sb.get("share_link", ""),
+                            "sport_category": sb.get("sport_category", ""),
+                            "market": sb.get("market", ""),
+                            "outcome": sb.get("outcome", ""),
                         })
                     notifier.send(f"大额下注警告 - {timestamp}", single_data)
                     logger.info(f">>> 已发送 {len(single_big_bets)} 条单笔大额通知")
