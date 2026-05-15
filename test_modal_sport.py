@@ -348,6 +348,28 @@ def main():
         print("\n=== Modal outerHTML (first 5000) ===")
         print(get_modal_html(page))
 
+        # Save sport_category + event_slug from modal DOM
+        href_result = try_strategy_href(page)
+        if href_result["found"] and href_result["urls"]:
+            raw_url = href_result["urls"][0]
+            event_url = raw_url if raw_url.startswith("http") else "https://stake.com" + raw_url
+            parsed = parse_event_url(event_url)
+            result = {
+                **parsed,
+                "event_url": event_url,
+                "event": row["cells"][0],
+                "player": row["cells"][1],
+                "time": row["cells"][2],
+                "odds": row["cells"][3],
+                "captured_at": datetime.now().isoformat(),
+            }
+            save_path = "log/modal_sport_result.json"
+            with open(save_path, "w", encoding="utf-8") as f:
+                json.dump([result], f, indent=2, ensure_ascii=False)
+            print(f"\nSaved sport_category={parsed.get('sport_category','')} event_slug={parsed.get('event_slug','')} -> {save_path}")
+        else:
+            print("\nNo sport link found in modal DOM")
+
     finally:
         try:
             if managed and playwright:
