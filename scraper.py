@@ -650,7 +650,7 @@ class StakeScraper:
                 if (!text.includes('ID')) continue;
                 const lines = text.split('\\n').map(l => l.trim()).filter(Boolean);
                 let player = '', event = '', odds = '', amount = '';
-                let market = '', outcome = '';
+                let market = '', outcome = '', is_live = false;
 
                 // 找"赔率"/"Odds"标签行（反推 market/outcome 的锚点）
                 let oddsLabelIdx = -1;
@@ -669,6 +669,10 @@ class StakeScraper:
                     // 时间行（如 "下午6:13 2026/5/2"）的下一行是赛事名
                     if (/\\d{1,2}[:.]\\d{2}\\s+\\d{4}/.test(lines[i]) && i + 1 < lines.length) {
                         event = (lines[i + 1] || '');
+                    }
+                    // 检测是否为滚球盘(实时): 事件名下一行 == '实时'
+                    if (event && lines.indexOf(event) >= 0 && lines[lines.indexOf(event) + 1] === '实时') {
+                        is_live = true;
                     }
                     // 赔率标签 → 下一行是赔率值
                     if ((lines[i] === '赔率' || lines[i] === 'Odds' || lines[i] === 'odds') && i + 1 < lines.length) {
@@ -694,9 +698,14 @@ class StakeScraper:
                     }
                 }
 
-                return {event: event, player: player, odds: odds, amount: amount, market: market, outcome: outcome};
+                // 检测事件名下一行是否为'实时'（滚球盘）
+                const evIdx = lines.indexOf(event);
+                if (evIdx >= 0 && evIdx + 1 < lines.length && lines[evIdx + 1] === '实时') {
+                    is_live = true;
+                }
+                return {event: event, player: player, odds: odds, amount: amount, market: market, outcome: outcome, is_live: is_live};
             }
-            return {event: '', player: '', odds: '', amount: '', market: '', outcome: ''};
+            return {event: '', player: '', odds: '', amount: '', market: '', outcome: '', is_live: false};
         }""")
 
     def _open_bet_detail(self, bet: dict) -> dict:
@@ -823,7 +832,8 @@ class StakeScraper:
 
         self._dismiss_detail_panel()
         bet.pop('_cached_row', None)
-        return {"share_link": share_link, "market": market, "outcome": outcome, "event_url": event_url}
+        is_live = final_info.get("is_live", False)
+        return {"share_link": share_link, "market": market, "outcome": outcome, "event_url": event_url, "is_live": is_live}
 
     def extract_details_for_bets(self, bets: list[dict]) -> list[dict]:
         """对一批投注获取分享链接+玩法+结果（失败重试1次）"""
@@ -847,6 +857,7 @@ class StakeScraper:
                 "market": detail.get("market", "") if detail else "",
                 "outcome": detail.get("outcome", "") if detail else "",
             "event_url": detail.get("event_url", "") if detail else "",
+            "is_live": detail.get("is_live", False) if detail else False,
             }
             if not linkshare:
                 logger.info(

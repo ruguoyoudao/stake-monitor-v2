@@ -54,6 +54,7 @@ def build_dataframe(bets):
             'currency': extract_currency(b.get('amount', '')),
             'sport_category': b.get('sport_category', ''),
             'event_slug': b.get('event_slug', ''),
+            'is_live': b.get('is_live', False),
             'market': b.get('market', ''),
             'outcome': b.get('outcome', ''),
             'share_link': b.get('share_link', ''),
@@ -94,6 +95,8 @@ if categories:
 else:
     selected_categories = []
 
+exclude_live = st.sidebar.checkbox('\u6392\u9664\u6eda\u7403\u76d8', value=True)
+
 event_search = st.sidebar.text_input('\u8d5b\u4e8b\u641c\u7d22\uff08\u5173\u952e\u8bcd\uff09')
 
 if 'saved_at' in df.columns and df['saved_at'].notna().any():
@@ -108,6 +111,8 @@ else:
 mask = df['amount_cny'] >= cny_threshold
 if selected_categories:
     mask &= df['sport_category'].isin(selected_categories)
+if exclude_live:
+    mask &= ~df['is_live'].fillna(False)
 mask &= df['currency'].isin(selected_currencies)
 mask &= (df['odds'] >= odds_range[0]) & (df['odds'] <= odds_range[1])
 if event_search:
@@ -239,9 +244,9 @@ else:
     st.info('\u6682\u65e0\u805a\u7c7b\u544a\u8b66\u8bb0\u5f55')
 
 st.subheader('\u6295\u6ce8\u660e\u7ec6')
-display_cols = ['saved_at', 'sport_category', 'event', 'market', 'outcome', 'player', 'odds', 'amount', 'amount_cny', 'currency']
+display_cols = ['saved_at', 'sport_category', 'event', 'is_live', 'market', 'outcome', 'player', 'odds', 'amount', 'amount_cny', 'currency']
 display_df = filtered[display_cols].copy()
-display_df.columns = ['\u65f6\u95f4', '\u9879\u76ee\u7c7b\u522b', '\u8d5b\u4e8b', '\u73a9\u6cd5', '\u7ed3\u679c', '\u73a9\u5bb6', '\u8d54\u7387', '\u539f\u59cb\u91d1\u989d', 'CNY\u91d1\u989d', '\u5e01\u79cd']
+display_df.columns = ['\u65f6\u95f4', '\u9879\u76ee\u7c7b\u522b', '\u8d5b\u4e8b', '\u5b9e\u65f6', '\u73a9\u6cd5', '\u7ed3\u679c', '\u73a9\u5bb6', '\u8d54\u7387', '\u539f\u59cb\u91d1\u989d', 'CNY\u91d1\u989d', '\u5e01\u79cd']
 display_df['\u65f6\u95f4'] = display_df['\u65f6\u95f4'].dt.strftime('%m-%d %H:%M')
 
 st.dataframe(

@@ -58,6 +58,7 @@ while True:
 | 条件 | 动作 |
 |------|------|
 | `event` 含"复式" | `skip(复式)` |
+| `is_live == True` 且 `exclude_live: true` | `skip(滚球盘)` |
 | `to_cny()` 返回 0 | `skip(unknown currency)` |
 | `amount_cny < threshold` | 不记录（仅日志） |
 

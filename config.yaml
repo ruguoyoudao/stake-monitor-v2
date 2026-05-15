@@ -71,6 +71,7 @@ filters:
     - "counter-strike"
     - "dota-2"
     - "league-of-legends"       # 仅记录这些项目类别的大额投注
+  exclude_live: true              # 默认过滤掉滚球盘(实时)投注
 
 # 日志设置
 logging:

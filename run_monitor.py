@@ -56,6 +56,7 @@ CLUSTER_ENABLED = CLUSTER_CFG.get("enabled", False)
 CLUSTER_MIN_COUNT = CLUSTER_CFG.get("min_count", 3)
 FILTERS_CFG = config.get("filters", {})
 SPORT_WHITELIST = FILTERS_CFG.get("sport_categories", [])
+EXCLUDE_LIVE = FILTERS_CFG.get("exclude_live", True)
 CLUSTER_STEP = CLUSTER_CFG.get("step", 1)
 CLUSTER_WINDOW_HRS = CLUSTER_CFG.get("window_hours", 24)
 
@@ -296,6 +297,14 @@ try:
                     if skipped:
                         logger.info(f"    skip(非白名单类别): {skipped} 条")
 
+                # 滚球盘过滤：默认排除实时投注
+                if EXCLUDE_LIVE:
+                    before = len(enriched)
+                    enriched = [e for e in enriched if not e.get("is_live", False)]
+                    skipped = before - len(enriched)
+                    if skipped:
+                        logger.info(f"    skip(滚球盘): {skipped} 条")
+
                 entries = []
                 for b in enriched:
                     amount_raw = b.get("amount", "")
@@ -315,6 +324,7 @@ try:
                         "share_link": b.get("share_link", ""),
                         "sport_category": b.get("sport_category", ""),
                         "event_slug": b.get("event_slug", ""),
+                        "is_live": b.get("is_live", False),
                         "saved_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
                     }
                     logger.info(
