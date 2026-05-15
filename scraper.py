@@ -375,6 +375,24 @@ class StakeScraper:
         except Exception:
             return None
 
+    def _get_event_url_from_modal(self) -> str:
+        """从当前弹窗 DOM 的 <a href="/sports/..."> 提取事件 URL"""
+        return self.page.evaluate("""() => {
+            const modals = document.querySelectorAll(
+                '[class*="fixed"][class*="justify-center"]'
+            );
+            for (const m of modals) {
+                if (!(m.innerText || '').includes('ID')) continue;
+                const a = m.querySelector('a[href*="/sports/"]');
+                if (a) {
+                    const href = a.getAttribute('href') || '';
+                    if (href.includes('/sports/') && !href.includes('iid='))
+                        return href.startsWith('http') ? href : 'https://stake.com' + href;
+                }
+            }
+            return '';
+        }""")
+
     def _get_event_url_via_tab(self, share_link: str, event_name: str, timeout: float = 15) -> str:
         """Open share link in a new tab, click event name to get full event page URL.
 
@@ -801,9 +819,10 @@ class StakeScraper:
         market = final_info.get('market', '')
         outcome = final_info.get('outcome', '')
 
+        event_url = self._get_event_url_from_modal()
+
         self._dismiss_detail_panel()
-        bet.pop('_cached_row', None)  # 成功完成，清理缓存
-        event_url = self._get_event_url_via_tab(share_link, event_name=bet.get("event", "")) if share_link else ""
+        bet.pop('_cached_row', None)
         return {"share_link": share_link, "market": market, "outcome": outcome, "event_url": event_url}
 
     def extract_details_for_bets(self, bets: list[dict]) -> list[dict]:
