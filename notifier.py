@@ -193,7 +193,7 @@ class Notifier:
         return chunks
 
     def _format_one_bet(self, item: dict) -> list[str]:
-        """格式化单条投注"""
+        """格式化单条投注（与聚类通知格式一致）"""
         odds_raw = item.get('odds', '')
         try:
             odds_val = float(odds_raw or '0')
@@ -206,14 +206,19 @@ class Notifier:
         else:
             odds_color = "warning"
 
+        sc = item.get("sport_category", "")
+        cny_val = item.get("cny", 0)
         lines = [
+            f"> **项目**: {sc}" if sc else "",
             f"> **赛事**: {item.get('event', '')}",
+            f"> **玩法**: {item.get('market', '')}",
+            f"> **结果**: {item.get('outcome', '')}",
             f"> **玩家**: {item.get('player', '')}",
-            f"> **时间**: {item.get('time', '')}",
-            f'> **赔率**: <font color=\"{odds_color}\">{item.get("odds", "")}{"x" if odds_val > 0 else ""}</font>',
+            f'> **赔率**: <font color="{odds_color}">{item.get("odds", "")}{"x" if odds_val > 0 else ""}</font>',
             f"> **金额**: <font color=\"warning\">{item.get('amount', '')}</font>",
-            f"> **CNY**: <font color=\"warning\">{item.get('cny', '')}</font>",
+            f"> **CNY**: <font color=\"warning\">{cny_val:,.0f}</font>",
         ]
+        lines = [l for l in lines if l]
         sl = item.get("share_link", "")
         if sl:
             lines.append(f"> **分享**: {sl}")
