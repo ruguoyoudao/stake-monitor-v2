@@ -2,12 +2,33 @@
 Run with live Edge CDP on port 9222.
 """
 
-import time, re, json, sys
+import time, re, json, sys, os
+from datetime import datetime
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 from playwright_stealth import Stealth
 
 CDP_PORT = 9222
+
+
+class Tee:
+    """Write to both console and a log file."""
+    def __init__(self, filepath):
+        os.makedirs(os.path.dirname(filepath) or ".", exist_ok=True)
+        self.file = open(filepath, "w", encoding="utf-8")
+        self.stdout = sys.stdout
+
+    def write(self, data):
+        self.stdout.write(data)
+        self.file.write(data)
+        self.file.flush()
+
+    def flush(self):
+        self.stdout.flush()
+        self.file.flush()
+
+    def close(self):
+        self.file.close()
 TARGET_URL = "https://stake.com/sports/live"
 
 
@@ -264,8 +285,11 @@ def parse_event_url(url):
 
 
 def main():
-    pw = managed = playwright = browser = context = None
+    log_path = f"log/test_modal_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+    tee = Tee(log_path)
+    sys.stdout = tee
     try:
+        pw = managed = playwright = browser = context = None
         pw, managed, playwright, browser, context, page = connect_cdp()
 
         # Navigate to bet feed if needed
@@ -335,6 +359,8 @@ def main():
         except Exception:
             pass
         print("\nDone.")
+        sys.stdout = tee.stdout
+        tee.close()
 
 
 if __name__ == "__main__":
