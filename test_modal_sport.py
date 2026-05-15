@@ -272,11 +272,21 @@ def main():
         if "sports/live" not in page.url:
             page.goto(TARGET_URL, timeout=30000, wait_until="domcontentloaded")
             time.sleep(3)
+            # Wait for bet feed table to render
+            page.wait_for_selector('tr td', timeout=15000)
+            print("Page ready, waiting for bet feed data...")
+            time.sleep(5)
 
-        # Find first bet row
-        row = find_first_bet_row(page)
+        # Find first bet row (retry up to 10 times)
+        row = None
+        for attempt in range(10):
+            row = find_first_bet_row(page)
+            if row:
+                break
+            print(f"Waiting for bet rows... ({attempt + 1}/10)")
+            time.sleep(3)
         if not row:
-            print("ERROR: No bet rows found")
+            print("ERROR: No bet rows found after retries")
             return
         print(f"\nFirst row: idx={row['rowIndex']}, trigger={row['trigger']}")
         print(f"Cells: {row['cells']}")
@@ -315,9 +325,15 @@ def main():
         print(get_modal_html(page))
 
     finally:
-        if pw and managed and playwright:
-            managed.__exit__(None, None, None)
+        try:
+            if managed and playwright:
+                managed.__exit__(None, None, None)
+        except Exception:
+            pass
+        try:
             pw.stop()
+        except Exception:
+            pass
         print("\nDone.")
 
 
