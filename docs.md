@@ -17,7 +17,7 @@
 ## 1. run_monitor.py — 主监控入口
 
 ### 概述
-程序主循环，协调所有模块：连接浏览器、轮询数据、过滤投注、弹窗采集分享链接+玩法+结果、本地存储、跟注聚类检测。
+程序主循环：连接浏览器、轮询数据、过滤投注、弹窗采集分享链接+玩法+结果+滚球盘标识、本地存储、跟注聚类检测、单笔大额通知。
 
 ### 全局变量
 
@@ -29,6 +29,10 @@
 | `CLUSTER_MIN_COUNT` | `int` | 聚类触发最小条数 |
 | `CLUSTER_STEP` | `int` | 聚类递增步长 |
 | `CLUSTER_WINDOW_HRS` | `int` | 聚类时间窗口（小时），0=不限 |
+| `SINGLE_NOTIFY_THRESHOLD` | `int` | 单笔大额通知阈值（默认100000） |
+| `SPORT_WHITELIST` | `list` | 项目类别白名单 |
+| `EXCLUDE_LIVE` | `bool` | 是否排除滚球盘 |
+| `ANOMALY_THRESHOLD` | `int` | 连续异常触发阈值（硬编硐5） |
 
 ### 主循环流程
 
@@ -39,15 +43,19 @@ while True:
     3. 遍历 new_bets:
        a. parse_amount() → 币种识别
        b. to_cny()       → 汇率转换
-       c. 过滤复式投注    → skip(复式)
+        c. 过滤复式/多项    → skip(复式/多项)
        d. 检测大额        → amount_cny >= threshold
        e. 过滤未知币种    → amount_cny == 0 → skip
     4. 大额投注:
-       a. extract_details_for_bets() → 点击弹窗 → share_link + market + outcome
-       b. _save_large_bets()         → 追加到 large_bets.json
-       c. _check_clusters()          → 聚类检测 → 企业微信通知
-    5. 异常检测（连续 10 次写日志警告）:
-       a. data == []       → 数据提取异常
+        a. extract_details_for_bets() → 点击弹窗 → share_link + market + outcome + event_url + is_live
+        b. parse_event_url() → 提取 sport_category + event_slug
+        c. 白名单过滤 → sport_categories
+        d. 滚球盘过滤 → exclude_live
+        e. 单笔大额通知 → >=100k CNY
+        f. _save_large_bets()         → 追加到 large_bets.json + _check_clusters() → 聚类通知
+
+     5. 异常检测（连续 5 次 → 刷新网页 → 企业微信通知）:
+        a. len(data)==0    → 数据提取异常
        b. bets == 0        → 无投注数据
        c. new_bets == 0    → feed 停滞
     6. sleep(poll_interval)
@@ -57,10 +65,11 @@ while True:
 
 | 条件 | 动作 |
 |------|------|
-| `event` 含"复式" | `skip(复式)` |
-| `is_live == True` 且 `exclude_live: true` | `skip(滚球盘)` |
+| `event` 含"复式" 或 "多项" | `skip(复式/多项)` |
 | `to_cny()` 返回 0 | `skip(unknown currency)` |
 | `amount_cny < threshold` | 不记录（仅日志） |
+| `sport_category` 不在白名单中 | `skip(config.yaml)` |
+| `is_live == True` 且 `exclude_live: true` | `skip(滚球盘)` |
 
 ### 聚类检测
 
@@ -73,18 +82,18 @@ while True:
 
 ### 异常检测
 
-| 条件 | 连续次数 | 日志级别 | 典型原因 |
-|------|---------|---------|---------|
-| `len(data) == 0` | ≥ 10 | WARNING + 企业微信通知 | 浏览器页面关闭/崩溃 |
-| `len(bets) == 0` | ≥ 10 | WARNING + 企业微信通知 | 投注数据未加载 |
-| `len(new_bets) == 0` | ≥ 10 | WARNING + 企业微信通知 | feed 停滞 |
+| 条件 | 连续次数 | 行为 | 典型原因 |
+|------|---------|------|------|
+| `len(data) == 0` | ≥ 5 | 刷新网页 → 企业微信通知 | 浏览器页面关闭/崩溃 |
+| `len(bets) == 0` | ≥ 5 | 刷新网页 → 企业微信通知 | 投注数据未加载 |
+| `len(new_bets) == 0` | ≥ 5 | 刷新网页 → 企业微信通知 | feed 停滞 |
 
 ### 状态文件
 
 | 文件 | 内容 |
 |------|------|
 | `seen_bets.json` | 已处理投注 key 集合（event\|player\|time\|odds） |
-| `large_bets.json` | 大额投注记录（含 `saved_at` 时间戳） |
+| `large_bets.json` | 大额投注记录（含 `saved_at`, `is_live`, `sport_category`, `event_slug`） |
 | `cluster_alerts.json` | 聚类通知计数 `{cluster_key: last_notified_count}` |
 
 ---
@@ -152,7 +161,7 @@ while True:
 7. 返回 `{"share_link": "...", "market": "...", "outcome": "..."}`
 
 #### `_extract_modal_info() → dict`
-从弹窗文本提取 `{event, player, odds, amount, market, outcome}`。
+从弹窗文本提取 `{event, player, odds, amount, market, outcome, is_live}`。
 
 **market/outcome 提取逻辑**（弹窗无标签行，靠相对位置）：
 ```
@@ -167,8 +176,10 @@ while True:
 clipboard 拦截获取分享链接。拦截器仅安装一次（`__capture_installed` 标志）。依次点击弹窗中"复制"按钮，优先返回含 `modal=bet` 的链接，fallback 根据 Bet ID 构造。
 
 
+#### `_get_event_url_from_modal() → str`
+从当前弹窗 DOM 的 `<a href="/sports/...">` 提取完整事件页面 URL（无需打开新 tab）。
 
-#### `_get_event_url_via_tab(share_link: str, event_name: str, timeout: float = 15) → str`
+#### `_get_event_url_via_tab(已弃用，保留备用）share_link: str, event_name: str, timeout: float = 15) → str`
 通过新标签页打开分享链接，从弹窗 DOM 或点击赛事名跳转获取完整赛事页面 URL（含项目类别路径）。
 
 **流程**：
@@ -179,11 +190,14 @@ clipboard 拦截获取分享链接。拦截器仅安装一次（`__capture_insta
 5. 等待 URL 变更为 `/sports/{category}/{event}/...` 格式
 6. 捕获并返回 URL，关闭 tab
 
+#### `refresh_page()`
+刷新当前监控页面，用于异常恢复。
+
 #### `_dismiss_detail_panel()`
 关闭弹窗：优先点 close 按钮，fallback Escape 键，轮询确认弹窗消失。
 
 #### `extract_details_for_bets(bets: list[dict]) → list[dict]`
-公开接口：对一批投注逐个提取 `share_link` + `market` + `outcome`（失败重试 1 次），返回富化数据。
+公开接口：对一批投注逐个提取 `share_link` + `market` + `outcome` + `event_url` + `is_live`（失败重试 1 次），返回富化数据。
 
 ---
 
@@ -210,7 +224,6 @@ clipboard 拦截获取分享链接。拦截器仅安装一次（`__capture_insta
 | 5 | 兜底数字 | 任意 | `(数字, "USD")` |
 
 
-
 #### `parse_event_url(url: str) -> dict`
 解析 Stake.com 赛事页面 URL，提取项目赛事类别和具体赛事标识。
 
@@ -234,7 +247,7 @@ URL 格式：`https://stake.com/zh/sports/{sport_category}/{level}/{event_slug}/
 ### 类: `Notifier`
 
 #### `send(title, data: list[dict])`
-单笔投注通知（当前 `run_monitor.py` 不调用此方法）。
+单笔大额投注通知（`amount_cny >= single_notify_threshold` 时调用）。
 
 #### `send_cluster_alert(title: str, cluster_data: dict)`
 **聚类跟注预警专用方法**。
@@ -250,6 +263,7 @@ URL 格式：`https://stake.com/zh/sports/{sport_category}/{level}/{event_slug}/
     "players": ["Jesusitoln", "DonnetteKok0", "caulvi247"],
     "total_cny": 183055,
     "latest_odds": "1.49",
+    "sport_category": "soccer",
 }
 ```
 
@@ -257,6 +271,7 @@ URL 格式：`https://stake.com/zh/sports/{sport_category}/{level}/{event_slug}/
 ```
 ## 跟注预警 - 埃弗顿 - 曼城
 
+> 项目: soccer
 > 赛事: 埃弗顿 - 曼城
 > 玩法: 胜平负
 > 结果: 曼城
