@@ -103,8 +103,10 @@ if 'saved_at' in df.columns and df['saved_at'].notna().any():
     min_dt = df['saved_at'].min()
     max_dt = df['saved_at'].max()
     today = date.today()
-    date_range = st.sidebar.date_input('时间范围', value=(today, today),
-                                        min_value=min_dt.date(), max_value=max_dt.date())
+    default_end = max_dt.date()
+    default_start = default_end  # 默认选中最新数据所在日期
+    date_range = st.sidebar.date_input('时间范围', value=(default_start, default_end),
+                                        min_value=min_dt.date(), max_value=max(default_end, today))
 else:
     date_range = None
 
