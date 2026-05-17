@@ -357,15 +357,6 @@ try:
                 if CLUSTER_ENABLED:
                     _check_clusters()
 
-        # 数据提取正常 → 统一重置所有异常计数器和标志
-        if len(data) > 0:
-            scrape_err_streak = 0
-            scrape_err_refreshed = False
-            zero_bets_streak = 0
-            data_empty_refreshed = False
-            stale_streak = 0
-            stale_refreshed = False
-
         # 数据提取异常检测（data 完全为空 = scrape 失败）
         if len(data) == 0:
             scrape_err_streak += 1
@@ -394,6 +385,14 @@ try:
             if stale_streak >= ANOMALY_THRESHOLD and stale_streak % ANOMALY_THRESHOLD == 0:
                 logger.warning(f"!!! 数据异常: 连续 {stale_streak} 轮无新投注，feed 可能停滞")
                 notifier.send_anomaly_alert("Feed停滞", stale_streak, "连续多轮无新投注，风云榜 feed 可能已停止更新")
+        else:
+            # 有 new_bets → 一切正常，重置所有计数器
+            scrape_err_streak = 0
+            scrape_err_refreshed = False
+            zero_bets_streak = 0
+            data_empty_refreshed = False
+            stale_streak = 0
+            stale_refreshed = False
 
         _save_seen()
         time.sleep(config["scraper"]["poll_interval"])
